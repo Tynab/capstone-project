@@ -7,6 +7,10 @@ RUN npm ci --omit=dev
 
 FROM node:20-slim
 ENV NODE_ENV=production
+# Mã nguồn mặc định 8001 khi thiếu PORT; đặt 8000 ngay trong image để image tự
+# nhất quán với EXPOSE bên dưới (đã gặp thật: thiếu biến -> app nghe 8001, map
+# cổng 8000 không tới đâu).
+ENV PORT=8000
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -14,9 +18,10 @@ COPY . .
 USER node
 EXPOSE 8000
 
-# /api/health trả 200 khi server đã lên (server chỉ listen sau khi nối được DB,
-# nên healthcheck này cũng bao hàm luôn trạng thái DB).
+# Healthcheck bằng chính Node (fetch có sẵn từ Node 18): image node:20-slim
+# KHÔNG có wget lẫn curl, nên healthcheck kiểu wget sẽ luôn fail và container
+# bị đánh dấu unhealthy dù app chạy tốt.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8000/api/health || exit 1
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "server.js"]
