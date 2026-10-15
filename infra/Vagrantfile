@@ -1,0 +1,71 @@
+# -*- mode: ruby -*-
+# 2 VM cho lab: manager (control node Ansible + runner GitHub) và worker.
+# Vòng đời: infra\setup.cmd -> vagrant up -> vagrant provision --provision-with ansible.
+#
+# Ansible chạy TỪ TRONG manager nên phải chờ cả hai VM lên mới chạy được; vì vậy
+# provisioner mang tên "ansible" được đặt run: "never" và gọi riêng ở bước sau.
+VAGRANTFILE_API_VERSION = "2"
+
+REPO_ROOT = File.expand_path("..", __dir__)
+LAB_KEY   = File.join(__dir__, ".ssh", "lab_key.pub")
+LAB_KEY_PRIV = File.join(__dir__, ".ssh", "lab_key")
+# RUNNER_TOKEN do infra/setup.ps1 đặt; rỗng thì role runner tự bỏ qua và báo cách chạy lại.
+RUNNER_TOKEN = ENV.fetch("RUNNER_TOKEN", "")
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = "bento/ubuntu-22.04"
+  # Máy bật Hyper-V thì VirtualBox chạy qua WHPX, boot chậm hơn hẳn: mặc định
+  # 300s không đủ khi hai VM khởi động cùng lúc (đã gặp thật: worker bị
+  # "Timed out while waiting for the machine to boot").
+  config.vm.boot_timeout = 900
+  # Repo được mount vào /vagrant trong cả 2 VM: dùng để build image ngay trong VM
+  # và để Ansible đọc playbook mà không cần copy.
+  config.vm.synced_folder REPO_ROOT, "/vagrant"
+
+  NODES = {
+    "manager" => { ip: "192.168.56.10", name: "swarm-manager" },
+    "worker"  => { ip: "192.168.56.11", name: "swarm-worker" },
+  }
+
+  NODES.each do |key, node|
+    config.vm.define key do |vm|
+      vm.vm.hostname = node[:name]
+
+      # Mạng riêng host-only: máy Windows truy cập 192.168.56.x, và hai VM nói
+      # chuyện với nhau qua đây (swarm + Ansible đều đi trên mạng này).
+      vm.vm.network "private_network", ip: node[:ip]
+
+      vm.vm.provider "virtualbox" do |vb|
+        vb.memory = 4096
+        vb.cpus = 2
+        vb.name = "capstone-#{key}"
+      end
+
+      # Khoá lab được tiêm vào cả 2 VM: manager dùng nó để SSH sang worker khi
+      # chạy playbook. Không dùng khoá mặc định của Vagrant vì Vagrant không đặt
+      # khoá riêng vào trong guest.
+      vm.vm.provision "file", source: LAB_KEY, destination: "/home/vagrant/lab_key.pub"
+      vm.vm.provision "shell",
+        privileged: false,
+        inline: "cat ~/lab_key.pub >> ~/.ssh/authorized_keys && rm -f ~/lab_key.pub"
+    end
+  end
+
+  config.vm.define "manager" do |vm|
+    # Manager là control node của Ansible nên cần khoá RIÊNG để SSH sang worker.
+    # Chỉ manager có khoá riêng; worker chỉ nhận khoá công khai ở vòng lặp trên.
+    vm.vm.provision "file", source: LAB_KEY_PRIV, destination: "/home/vagrant/.ssh/lab_key"
+    vm.vm.provision "shell",
+      privileged: false,
+      inline: "chmod 600 ~/.ssh/lab_key && echo 'lab key san sang cho Ansible'"
+
+    vm.vm.provision "ansible", type: "ansible_local", run: "never" do |a|
+      a.playbook = "/vagrant/infra/ansible/site.yml"
+      a.inventory_path = "/vagrant/infra/ansible/inventory.ini"
+      # Mặc định ansible_local giới hạn vào chính máy đang provision -> phải mở
+      # rộng, nếu không playbook chỉ chạy trên manager và worker bị bỏ quên.
+      a.limit = "all"
+      a.extra_vars = { runner_token: RUNNER_TOKEN }
+    end
+  end
+end
