@@ -1,2 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Script/Linux chạy trong VM: bắt buộc LF
+infra/**/*.sh   text eol=lf
+infra/**/*.yml  text eol=lf
+infra/**/*.j2   text eol=lf
+infra/**/*.ini  text eol=lf
+infra/Vagrantfile text eol=lf
+# File .cmd phải CRLF
+infra/*.cmd text eol=crlf
