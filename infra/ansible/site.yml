@@ -17,3 +17,17 @@
   gather_facts: false
   roles:
     - swarm_worker
+
+# Chạy SAU khi có image trên GHCR (job build của CI). Role này sinh secret, ghi
+# /opt/capstone/.env, đẩy file stack và deploy lần đầu.
+- name: Sinh secret và deploy stack
+  hosts: swarm_manager
+  gather_facts: false
+  roles:
+    - app
+
+- name: Cài GitHub self-hosted runner trên manager
+  hosts: swarm_manager
+  gather_facts: false
+  roles:
+    - runner
