@@ -17,11 +17,11 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 - Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js:64-102](server.js#L64-L102)).
 - `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js:16-19](server.js#L16-L19)).
 - Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `REACT_APP_API_URL`, mặc định `http://localhost:8000/api` ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
-- `npm test` là placeholder `exit 1`; backend không có test lẫn lint. Test end-to-end thật nằm ở [../e2e](../e2e/README.md); repo chưa có Docker/CI.
+- `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`; hiện có `smtpConfig.test.js`); backend không có lint. Test end-to-end thật nằm ở [../e2e](../e2e/README.md).
 
 ### Biến môi trường (.env)
 
-`MONGO_URI`, `JWT_SECRET`, `PORT`, `GMAIL_USERNAME`, `GMAIL_PASSWORD`, `FRONTEND_URL`, `TRUST_PROXY`, `CORS_ORIGIN`. Mẫu ở `.env.example`; `.env` thật đã được `.gitignore` chặn vì dự án nộp qua GitHub.
+`MONGO_URI`, `JWT_SECRET`, `PORT`, `GMAIL_USERNAME`, `GMAIL_PASSWORD`, `FRONTEND_URL`, `TRUST_PROXY`, `CORS_ORIGIN`, `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS` (bỏ trống `SMTP_HOST` = dùng Gmail như cũ). Mẫu ở `.env.example`; `.env` thật đã được `.gitignore` chặn vì dự án nộp qua GitHub.
 
 - **Hai biến Gmail đang trống, nên hiện không mail nào gửi được.** Gửi mail là fire-and-forget — lỗi chỉ đi vào `logger` (không còn `console.log`), và `forgotPassword` cố ý không để lỗi lộ ra response (để không dò được email). Hệ quả: API trả 200 kèm thông báo "đã gửi link" trong khi thực tế không có mail nào tới. `server.js` cảnh báo lúc khởi động khi thiếu hai biến này; muốn chức năng quên mật khẩu chạy thật thì phải điền Gmail App Password.
 - `FRONTEND_URL` là gốc frontend dùng để dựng link reset trong email.
