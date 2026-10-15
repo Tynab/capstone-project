@@ -17,7 +17,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 - Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js:64-102](server.js#L64-L102)).
 - `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js:16-19](server.js#L16-L19)).
 - Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `REACT_APP_API_URL`, mặc định `http://localhost:8000/api` ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
-- `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`; hiện có `smtpConfig.test.js`); backend không có lint. Test end-to-end thật nằm ở [../e2e](../e2e/README.md).
+- `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`; hiện có `smtpConfig.test.js`); backend không có lint. Test end-to-end thật nằm ở [../e2e](../e2e/README.md). Đóng gói và deploy: [../infra/README.md](../infra/README.md) (image dựng từ `backend/Dockerfile`, không cần Docker trên máy — build trong VM hoặc trên CI).
 
 ### Biến môi trường (.env)
 

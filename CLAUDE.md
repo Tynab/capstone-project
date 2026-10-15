@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ứng dụng todo 3 phần — React (CRA) + Express/Mongoose + MongoDB — nhưng **mục đích thật của repo là bài cuối khóa CyberSoft DevOps 04**. Đề bài ở [du-an-cuoi-khoa.md](du-an-cuoi-khoa.md) yêu cầu **2 hạng mục**: dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus**.
 
-Trong repo **chưa có hạng mục nào**: không `.github/` (workflow), không cấu hình Prometheus/Grafana; ứng dụng cũng chưa được đóng gói (không `Dockerfile`, không `docker-compose*`). Phần mã ứng dụng thì đã qua refactor và nhiều vòng review. Nghĩa là khi được yêu cầu "dựng CICD / thêm giám sát", đó là **nội dung được chấm điểm**, không phải việc phụ — và không có sẵn khuôn mẫu nào trong repo để bắt chước.
+Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) (job `test` → `build` đẩy image lên GHCR → `deploy` chạy trên GitHub self-hosted runner đặt trong VM manager) và [infra/](infra/) (Vagrant + Ansible dựng Docker Swarm 2 node, stack có Prometheus + Grafana + node-exporter + cAdvisor + mongodb-exporter + blackbox-exporter). Cách dựng và vận hành: [infra/README.md](infra/README.md).
+
+Đặc điểm quan trọng khi làm việc trong repo này: **máy Windows không có Docker** — mọi lệnh `docker` phải chạy trong VM qua `cd infra && vagrant ssh manager -c "sudo docker ..."`. Hạ tầng chỉ có thật sau khi `infra\setup.cmd` chạy xong, và CI chỉ deploy được khi runner self-hosted đang online (VM đang bật).
 
 ## Bản đồ repo và thứ tự đọc
 
@@ -15,6 +17,7 @@ Trong repo **chưa có hạng mục nào**: không `.github/` (workflow), không
 | [backend/](backend/) | API Express 4 + Mongoose 6, ESM, JWT, reset password qua mail | [backend/CLAUDE.md](backend/CLAUDE.md) |
 | [frontend/](frontend/) | CRA 5 + React 18 + Tailwind, JavaScript thuần | [frontend/CLAUDE.md](frontend/CLAUDE.md) |
 | [e2e/](e2e/) | Test trên hạ tầng thật: mongod thật + backend + Chrome thật | [e2e/README.md](e2e/README.md) |
+| [infra/](infra/) | Vagrant + Ansible dựng swarm 2 node, stack và giám sát | [infra/README.md](infra/README.md) |
 
 Hai file CLAUDE.md ở thư mục con là bản chi tiết (kiến trúc, guard bảo mật, các lỗi đã từng xảy ra thật) — **đọc file tương ứng trước khi sửa `backend/` hoặc `frontend/`**. File ở gốc này chỉ chứa thứ liên quan nhiều phần cùng lúc.
 
@@ -99,7 +102,8 @@ Không có unit test nào, và backend không có linter (frontend chỉ có ESL
 
 1. Sửa backend hoặc hợp đồng API → `cd e2e && npm run test:api`.
 2. Đụng vào UI/state/reducer → thêm cả `npm run test:browser`; test API xanh không chứng minh app không trắng màn hình (đã từng có đúng tình huống đó).
-3. Nêu rõ đã chạy gì và kết quả ra sao — kể cả khi đỏ.
+3. Đụng vào `infra/` → `cd infra && vagrant provision --provision-with ansible`, rồi kiểm theo mục "Kiểm chứng" trong [infra/README.md](infra/README.md); phải chạy được **hai lần liên tiếp** mà lần thứ hai báo `changed=0` (mọi role đều idempotent — đã từng vỡ ở lần chạy thứ hai).
+4. Nêu rõ đã chạy gì và kết quả ra sao — kể cả khi đỏ.
 
 ## Việc còn tồn đã biết
 
