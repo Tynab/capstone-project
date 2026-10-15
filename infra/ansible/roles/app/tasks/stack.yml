@@ -1,0 +1,13 @@
+---
+# Đẩy toàn bộ infra/stack/ (docker-stack.yml, prometheus.yml, blackbox.yml,
+# grafana/) vào /opt/capstone. deploy.sh chạy trong thư mục đó nên các đường dẫn
+# tương đối trong file stack (./prometheus.yml ...) đều đúng.
+- name: Copy file stack và cấu hình giám sát
+  copy:
+    # playbook_dir là /vagrant/infra/ansible -> lên MỘT cấp là /vagrant/infra,
+    # nên đường dẫn đúng là ../stack/ (không phải ../../stack/).
+    src: "{{ playbook_dir }}/../stack/"
+    dest: "{{ app_dir }}/"
+    owner: vagrant
+    mode: "0644"
+  notify: deploy stack

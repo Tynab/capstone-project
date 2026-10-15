@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Deploy stack lên swarm. Dùng CHUNG cho Ansible (lần đầu) và cho CI (các lần sau)
+# nên hành vi deploy giống hệt nhau ở mọi đường vào.
+#
+#   ./deploy.sh            -> deploy bản latest
+#   ./deploy.sh sha-abc1234 -> deploy đúng tag đó (cũng là cách rollback)
+set -euo pipefail
+cd {{ app_dir }}
+
+# Nạp env tường minh: không dựa vào việc `docker stack deploy` có tự đọc .env hay
+# không (hành vi này khác nhau giữa các bản Docker).
+set -a
+. {{ app_dir }}/.env
+set +a
+
+TAG="${1:-}"
+if [ -n "$TAG" ]; then
+  export BACKEND_IMAGE="${BACKEND_REPO}:${TAG}"
+  export FRONTEND_IMAGE="${FRONTEND_REPO}:${TAG}"
+fi
+
+echo "Deploy {{ stack_name }}: backend=${BACKEND_IMAGE} frontend=${FRONTEND_IMAGE}"
+docker stack deploy -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
+
+# Chờ các service hội tụ (tối đa 180s) trước khi kết luận.
+for i in $(seq 1 36); do
+  replicas=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
+  if [ -n "$replicas" ] && ! echo "$replicas" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
+    echo "Tất cả service đã đủ replica (sau ${i} lần kiểm tra)."
+    break
+  fi
+  sleep 5
+done
+docker stack services {{ stack_name }}
+
+# Xác nhận qua chính nginx: một request đi hết nginx -> backend -> DB.
+for i in $(seq 1 20); do
+  if curl -fsS http://127.0.0.1/api/health >/dev/null; then
+    echo "Healthcheck qua nginx: OK"
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "LỖI: app không trả /api/health sau khi deploy. Trạng thái service:"
+docker stack services {{ stack_name }}
+echo "--- task lỗi (nếu có) ---"
+for svc in $(docker stack services {{ stack_name }} -q); do
+  docker service ps --no-trunc "$svc" --filter desired-state=shutdown || true
+done
+exit 1

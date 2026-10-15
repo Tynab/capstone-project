@@ -1,0 +1,43 @@
+---
+- name: Tạo thư mục /opt/capstone
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: "0750"
+
+# Secret nằm ngoài repo và ngoài GitHub: sinh tại chỗ, quyền 0700.
+- name: Tạo thư mục secrets
+  file:
+    path: "{{ app_dir }}/secrets"
+    state: directory
+    owner: vagrant
+    mode: "0700"
+
+# lookup('password') GHI file ở lần chạy đầu và ĐỌC LẠI ở các lần sau, nên
+# provision lại không đổi mật khẩu (đổi mật khẩu Mongo sẽ làm app mất kết nối DB).
+# Chỉ dùng chữ + số vì các giá trị này được ghi vào .env, shell `source` nó rồi
+# nội suy vào compose: ký tự đặc biệt sẽ phá cả ba bước.
+- name: Sinh secret (giữ nguyên nếu đã có)
+  set_fact:
+    jwt_secret: "{{ lookup('password', app_dir + '/secrets/jwt_secret chars=ascii_letters,digits length=48') }}"
+    mongo_root_password: "{{ lookup('password', app_dir + '/secrets/mongo_root chars=ascii_letters,digits length=32') }}"
+    grafana_admin_password: "{{ lookup('password', app_dir + '/secrets/grafana_admin chars=ascii_letters,digits length=24') }}"
+
+- name: Ghi /opt/capstone/.env
+  template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: vagrant
+    mode: "0600"
+
+- name: Ghi deploy.sh
+  template:
+    src: deploy.sh.j2
+    dest: "{{ app_dir }}/deploy.sh"
+    owner: vagrant
+    mode: "0755"
+
+- name: Đặt file stack và cấu hình giám sát
+  include_tasks: stack.yml
