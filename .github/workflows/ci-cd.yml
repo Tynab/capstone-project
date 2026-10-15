@@ -1,0 +1,48 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag image để deploy lại (rollback). Bỏ trống = dùng bản mới nhất của lần chạy này."
+        required: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (e2e API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            e2e/package-lock.json
+
+      # e2e tải binary mongod thật (~80MB) ở lần đầu; cache lại cho các lần sau.
+      - name: Cache binary mongod
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Cài dependency
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix e2e
+
+      # Unit test của backend chạy bằng node --test (không cần service ngoài).
+      - name: Unit test backend
+        run: npm --prefix backend test
+
+      - name: Chạy e2e tầng API
+        run: npm --prefix e2e run test:api
