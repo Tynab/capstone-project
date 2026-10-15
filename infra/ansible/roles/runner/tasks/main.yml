@@ -27,9 +27,12 @@
 
 - name: Chốt phiên bản runner sẽ cài
   set_fact:
+    # .get() chứ không phải .json: lần chạy thứ hai task lấy bản mới nhất bị SKIP
+    # (runner đã đăng ký), khi đó runner_release không có khoá 'json' và truy cập
+    # thẳng sẽ làm playbook đổ.
     runner_effective_version: >-
       {{ runner_version if runner_version | length > 0
-         else (runner_release.json.tag_name | regex_replace('^v', '')) }}
+         else ((runner_release | default({})).get('json', {}).get('tag_name', '') | regex_replace('^v', '')) }}
 
 # Dọn bản runner của lần chạy dở dang trước (chưa đăng ký xong) — nếu không,
 # `creates: config.sh` sẽ bỏ qua bước tải và ta giữ lại đúng bản cũ đã hỏng.
@@ -73,7 +76,7 @@
 - name: Đăng ký runner với repo
   command: >-
     ./config.sh --url {{ repo_url }} --token {{ runner_token }}
-    --name swarm-manager-1 --labels {{ runner_labels }}
+    --name {{ runner_name }} --labels {{ runner_labels }}
     --unattended --replace
   args:
     chdir: "{{ runner_dir }}"
@@ -93,11 +96,22 @@
     - not runner_registered.stat.exists
     - runner_token | length == 0
 
+# Tách cài đặt khỏi khởi động: `svc.sh install` đổ khi unit đã tồn tại (đã gặp
+# thật ở lần provision thứ hai), còn `svc.sh start` không idempotent. Dùng module
+# systemd để phần "đảm bảo đang chạy" an toàn khi chạy lại.
 - name: Cài runner thành systemd service
-  shell: "{{ runner_dir }}/svc.sh install {{ runner_user }} && {{ runner_dir }}/svc.sh start"
+  command: "{{ runner_dir }}/svc.sh install {{ runner_user }}"
   args:
     chdir: "{{ runner_dir }}"
-  register: svc
-  changed_when: "'already installed' not in svc.stdout"
+    creates: "/etc/systemd/system/actions.runner.Tynab-capstone-project.{{ runner_name }}.service"
+  become: true
+  when: runner_registered.stat.exists or runner_token | length > 0
+
+- name: Bật và chạy runner service
+  systemd:
+    name: "actions.runner.Tynab-capstone-project.{{ runner_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
   become: true
   when: runner_registered.stat.exists or runner_token | length > 0

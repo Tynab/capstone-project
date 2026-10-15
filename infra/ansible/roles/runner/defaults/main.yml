@@ -6,4 +6,5 @@ runner_home: /home/ghrunner
 runner_version: ""
 runner_dir: "{{ runner_home }}/actions-runner"
 runner_labels: "swarm-manager"
+runner_name: "swarm-manager-1"
 repo_url: "https://github.com/Tynab/capstone-project"

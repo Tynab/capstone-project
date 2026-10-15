@@ -5,7 +5,9 @@
     state: directory
     owner: vagrant
     group: vagrant
-    mode: "0750"
+    # 0755 chứ không 0750: GitHub runner chạy bằng user ghrunner và phải đi qua
+    # thư mục này để gọi deploy.sh (đã gặp thật: lỗi 126 Permission denied).
+    mode: "0755"
 
 # Secret nằm ngoài repo và ngoài GitHub: sinh tại chỗ, quyền 0700.
 - name: Tạo thư mục secrets
@@ -30,7 +32,10 @@
     src: env.j2
     dest: "{{ app_dir }}/.env"
     owner: vagrant
-    mode: "0600"
+    # group docker + 0640: cả vagrant (chạy tay) và ghrunner (job deploy của CI)
+    # đều nằm trong group docker và cần đọc file này để deploy.
+    group: docker
+    mode: "0640"
 
 - name: Ghi deploy.sh
   template:
