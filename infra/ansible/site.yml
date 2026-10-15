@@ -1,0 +1,19 @@
+---
+# Thứ tự QUAN TRỌNG: manager phải xong trước để worker có token mà join.
+- name: Cấu hình chung cho cả 2 node
+  hosts: swarm
+  gather_facts: true
+  roles:
+    - common
+
+- name: Khởi tạo swarm ở manager
+  hosts: swarm_manager
+  gather_facts: false
+  roles:
+    - swarm_manager
+
+- name: Cho worker join swarm
+  hosts: swarm_worker
+  gather_facts: false
+  roles:
+    - swarm_worker
