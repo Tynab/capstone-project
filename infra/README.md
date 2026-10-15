@@ -65,12 +65,18 @@ Chạy lại nhiều lần vô hại.
 | Lấy mật khẩu lab | `vagrant ssh manager -c "sudo cat /opt/capstone/.env"` |
 | Đăng ký lại runner khi token cũ hết hạn | `$env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token); cd infra; vagrant provision --provision-with ansible` |
 
-**Sao lưu MongoDB trước khi `destroy`:**
+**Sao lưu MongoDB trước khi `destroy`** — chạy từ Git Bash, file ghi thẳng về máy
+Windows (KHÔNG ghi vào `/tmp` của VM: `destroy` xoá luôn, tưởng có backup mà mất):
 
 ```bash
-vagrant ssh manager -c 'sudo bash -c ". /opt/capstone/.env; docker exec \$(docker ps -q -f name=capstone_mongo) mongodump --archive --gzip -u \$MONGO_ROOT_USERNAME -p \$MONGO_ROOT_PASSWORD --authenticationDatabase admin > /tmp/backup.gz"'
-vagrant ssh manager -c "sudo docker cp \$(vagrant ssh manager -c 'sudo docker ps -q -f name=capstone_mongo'):/tmp/backup.gz /tmp/backup.gz"
+cd infra
+vagrant ssh manager -c 'sudo bash -c ". /opt/capstone/.env; docker run --rm --network capstone mongo:6 mongodump --uri=\"\$MONGO_URI\" --archive --gzip"' > backup-mongo.gz
+gzip -t backup-mongo.gz && echo "backup hop le, kich thuoc: $(du -h backup-mongo.gz | cut -f1)"
 ```
+
+Chú ý **đừng** đi tìm container `capstone_mongo` trên manager để `docker exec`: service này bị
+ghim vào **worker**, nên `docker ps` trên manager không thấy nó (đã gặp thật khi thử lệnh này).
+Cách trên chạy một container `mongo:6` tạm trong overlay network và trỏ thẳng vào service `mongo`.
 
 ## Xử lý sự cố
 
@@ -84,7 +90,7 @@ vagrant ssh manager -c "sudo docker cp \$(vagrant ssh manager -c 'sudo docker ps
 | Node join với tên `vagrant` | Bước đặt hostname của Vagrant không chạy (lần `up` hết thời gian chờ) | Role `common` đặt hostname theo `lab_hostnames`; cho node rời rồi join lại: `docker swarm leave` rồi provision |
 | Prometheus target `down` | Prometheus/target không cùng overlay network, hoặc exporter chưa lên ở node đó | `docker stack services capstone`, `docker service logs capstone_prometheus` |
 | Service `0/1` hoặc `0/2` | Thiếu RAM/CPU, kéo image lỗi, hoặc constraint không khớp node | `docker service ps --no-trunc <service>` xem cột `ERROR` |
-| Job `deploy` trên GitHub treo ở `queued` | Runner offline (VM tắt) | `gh api repos/Tynab/capstone-project/actions/runners`; dựng lại bằng `infra\setup.cmd`; job sẽ đỏ sau `timeout-minutes: 15` |
+| Job `deploy` trên GitHub đứng ở `queued` mãi | Runner offline (VM tắt). **`timeout-minutes` KHÔNG cứu ca này** — nó chỉ đếm từ lúc job bắt đầu chạy, còn job đang chờ runner thì GitHub chỉ tự huỷ sau ~24h | `gh api repos/Tynab/capstone-project/actions/runners` xem runner; dựng lại VM bằng `infra\setup.cmd`, hoặc huỷ tay `gh run cancel <id>` |
 | F5 ở `/active` trả 404 | Thiếu SPA fallback trong nginx | Kiểm `frontend/nginx.conf` rồi build lại image |
 | Job `deploy` lỗi `Permission denied` (exit 126) | `/opt/capstone` hoặc `.env` không cho user `ghrunner` đi qua/đọc | Role `app` đặt thư mục 0755 và `.env` 0640 group `docker`; kiểm bằng `sudo -u ghrunner sh -c '. /opt/capstone/.env'` |
 | Runner không đăng ký được: `minimum runner version ... is now X` | GitHub chặn runner cũ đăng ký | Role `runner` để `runner_version` rỗng = tự lấy bản mới nhất; đừng ghim cứng số phiên bản |
@@ -125,8 +131,10 @@ Muốn chuyển sang private:
 
 ## Bảo mật trong lab
 
-- Secret sinh tự động, chỉ chữ và số, lưu `/opt/capstone/.env` (quyền 600) trong VM
-  manager — không nằm trong repo, không nằm trong GitHub Secrets, không in ra log.
+- Secret sinh tự động, chỉ chữ và số, lưu `/opt/capstone/.env` (quyền **0640**, group
+  `docker`) trong VM manager — không nằm trong repo, không nằm trong GitHub Secrets,
+  không in ra log. Group `docker` là để user `ghrunner` (job deploy của CI) đọc được;
+  trên VM này group `docker` vốn tương đương quyền root nên không mở thêm mặt tấn công.
 - Mongo bật auth với tài khoản `capstone`; exporter dùng cùng tài khoản đó.
 - Cổng 9090/3001/8025 chỉ mở trên mạng host-only, không ra internet.
 - `TRUST_PROXY=1` bắt buộc vì backend nằm sau nginx — thiếu nó thì rate limit

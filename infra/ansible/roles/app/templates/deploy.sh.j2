@@ -23,10 +23,13 @@ echo "Deploy {{ stack_name }}: backend=${BACKEND_IMAGE} frontend=${FRONTEND_IMAG
 docker stack deploy -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
 
 # Chờ các service hội tụ (tối đa 180s) trước khi kết luận.
+converged=0
 for i in $(seq 1 36); do
   replicas=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
-  if [ -n "$replicas" ] && ! echo "$replicas" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
+  # awk exit 0 = mọi dòng đều "N/N"; exit 1 = còn service chưa đủ replica.
+  if [ -n "$replicas" ] && echo "$replicas" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
     echo "Tất cả service đã đủ replica (sau ${i} lần kiểm tra)."
+    converged=1
     break
   fi
   sleep 5
@@ -34,18 +37,37 @@ done
 docker stack services {{ stack_name }}
 
 # Xác nhận qua chính nginx: một request đi hết nginx -> backend -> DB.
+health_ok=0
 for i in $(seq 1 20); do
   if curl -fsS http://127.0.0.1/api/health >/dev/null; then
     echo "Healthcheck qua nginx: OK"
-    exit 0
+    health_ok=1
+    break
   fi
   sleep 5
 done
 
-echo "LỖI: app không trả /api/health sau khi deploy. Trạng thái service:"
-docker stack services {{ stack_name }}
-echo "--- task lỗi (nếu có) ---"
-for svc in $(docker stack services {{ stack_name }} -q); do
-  docker service ps --no-trunc "$svc" --filter desired-state=shutdown || true
-done
-exit 1
+# BẮT BUỘC: healthcheck ở trên có thể xanh vì BẢN CŨ vẫn đang phục vụ sau khi
+# swarm rollback (update_config failure_action: rollback). Không kiểm ảnh đang
+# chạy thì deploy tag sai vẫn báo thành công — đã gặp thật.
+# Dùng `stack services --format` chứ không `service inspect` nhiều tên: inspect
+# với nhiều service trả về MẢNG nên template .Name không tồn tại (đã gặp thật).
+# (Chú thích không được chứa cặp ngoặc nhọn — Jinja sẽ hiểu là biểu thức.)
+running=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Image{{ "}}" }}')
+echo "$running"
+if ! echo "$running" | grep -qF "${BACKEND_IMAGE}" || ! echo "$running" | grep -qF "${FRONTEND_IMAGE}"; then
+  echo "LỖI: service KHÔNG chạy đúng ảnh được yêu cầu (${BACKEND_IMAGE} / ${FRONTEND_IMAGE})."
+  echo "Thường là image không tồn tại nên swarm đã rollback về bản cũ."
+  exit 1
+fi
+
+if [ "$health_ok" != "1" ] || [ "$converged" != "1" ]; then
+  echo "LỖI: chưa hội tụ (converged=${converged}) hoặc healthcheck đỏ (health_ok=${health_ok})."
+  echo "--- task lỗi (nếu có) ---"
+  for svc in $(docker stack services {{ stack_name }} -q); do
+    docker service ps --no-trunc "$svc" --filter desired-state=shutdown || true
+  done
+  exit 1
+fi
+
+exit 0

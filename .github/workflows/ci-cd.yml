@@ -2,7 +2,12 @@ name: CI/CD
 
 on:
   push:
-  pull_request:
+  # KHÔNG bật `pull_request`: repo này public và có self-hosted runner. Với sự kiện
+  # pull_request, workflow lấy từ nhánh của PR — người lạ fork repo rồi sửa file
+  # workflow để thêm job chạy trên runner self-hosted là chạy được code tuỳ ý trên
+  # VM manager (user ghrunner, group docker = tương đương root, đọc được
+  # /opt/capstone/.env). Muốn có CI cho PR thì bật trước: Settings → Actions →
+  # "Require approval for all outside collaborators", rồi mới thêm lại dòng này.
   workflow_dispatch:
     inputs:
       image_tag:
@@ -113,7 +118,9 @@ jobs:
     # thấy IP host-only 192.168.56.x, còn runner này vừa kéo được image vừa gọi
     # được docker tại chỗ.
     runs-on: [self-hosted, swarm-manager]
-    # VM tắt thì job nằm chờ chứ không fail ngay — chặn treo vô hạn.
+    # timeout-minutes chỉ đếm khi job ĐÃ BẮT ĐẦU chạy (chặn ca deploy.sh treo).
+    # Runner offline thì job nằm ở trạng thái queued và KHÔNG bị huỷ bởi dòng này —
+    # GitHub chỉ tự huỷ job queued sau ~24h. Xem mục xử lý sự cố trong infra/README.md.
     timeout-minutes: 15
     concurrency:
       group: deploy-production
