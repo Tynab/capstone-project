@@ -1,0 +1,86 @@
+{
+  "uid": "capstone-overview",
+  "title": "Capstone overview",
+  "tags": ["capstone", "swarm"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU từng node (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "RAM từng node (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Dung lượng đĩa còn trống từng node (GB)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_filesystem_avail_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"} / 1024 / 1024 / 1024"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "CPU container của stack (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"capstone_.*\"}[5m])) * 100"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "MongoDB đang chạy",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "mongodb_up" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Kết nối tới MongoDB",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "mongodb_connections{state=\"current\"}" }]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Dịch vụ phản hồi (blackbox)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "probe_success" }]
+    }
+  ]
+}

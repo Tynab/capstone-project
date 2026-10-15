@@ -1,0 +1,85 @@
+# Stack của bài cuối khóa. Các biến ${...} được nội suy từ /opt/capstone/.env
+# mà deploy.sh đã `source` trước khi gọi `docker stack deploy`.
+version: "3.8"
+
+networks:
+  capstone:
+    external: true
+
+volumes:
+  mongo_data:
+
+services:
+  mongo:
+    image: mongo:6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      # Ghim vào worker để dữ liệu nằm một chỗ cố định và manager nhẹ tải.
+      placement:
+        constraints: [node.role == worker]
+      restart_policy:
+        condition: on-failure
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: "8000"
+      FRONTEND_URL: ${FRONTEND_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TRUST_PROXY: ${TRUST_PROXY}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+    networks: [capstone]
+    deploy:
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.id
+      # start-first + rollback: cập nhật hỏng thì swarm tự quay về bản cũ.
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    ports:
+      - target: 80
+        published: 80
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.id
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+
+  # SMTP giả cho lab: nhận mọi mail để demo được luồng quên mật khẩu mà không
+  # cần credentials thật. Xem UI ở cổng 8025.
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - target: 8025
+        published: 8025
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
