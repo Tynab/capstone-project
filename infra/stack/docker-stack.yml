@@ -8,6 +8,8 @@ networks:
 
 volumes:
   mongo_data:
+  prom_data:
+  grafana_data:
 
 services:
   mongo:
@@ -83,3 +85,125 @@ services:
       replicas: 1
       placement:
         constraints: [node.role == manager]
+
+  # ------------------------------- giám sát -------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - prom_data:/prometheus
+    ports:
+      - target: 9090
+        published: 9090
+        mode: ingress
+    networks: [capstone]
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - target: 3000
+        published: 3001
+        mode: ingress
+    networks: [capstone]
+    # Dashboard + datasource nạp từ file: mở Grafana là có sẵn, không bấm tay.
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+        mode: 0444
+      - source: grafana_dashboards_provider
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+        mode: 0444
+      - source: grafana_dashboard_capstone
+        target: /var/lib/grafana/dashboards/capstone-overview.json
+        mode: 0444
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  # Trạng thái database: dùng chính tài khoản trong MONGO_URI.
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40
+    command: ["--collect-all", "--discovering-mode"]
+    environment:
+      MONGODB_URI: ${MONGO_URI}
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    configs:
+      - source: blackbox_yml
+        target: /etc/blackbox_exporter/config.yml
+        mode: 0444
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  # global: mỗi node một container -> đo đúng phần cứng của từng máy.
+  # Cổng publish kiểu host để Prometheus scrape theo IP của từng node.
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - target: 9100
+        published: 9100
+        mode: host
+    networks: [capstone]
+    deploy:
+      mode: global
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - target: 8080
+        published: 8080
+        mode: host
+    networks: [capstone]
+    deploy:
+      mode: global
+
+configs:
+  prometheus_yml:
+    file: ./prometheus.yml
+  blackbox_yml:
+    file: ./blackbox.yml
+  grafana_datasource:
+    file: ./grafana/provisioning/datasources/prometheus.yml
+  grafana_dashboards_provider:
+    file: ./grafana/provisioning/dashboards/dashboards.yml
+  grafana_dashboard_capstone:
+    file: ./grafana/dashboards/capstone-overview.json
