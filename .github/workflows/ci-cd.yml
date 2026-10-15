@@ -46,3 +46,61 @@ jobs:
 
       - name: Chạy e2e tầng API
         run: npm --prefix e2e run test:api
+
+  build:
+    name: Build va push image
+    needs: test
+    # Chỉ build khi mã đã vào main: PR và nhánh phụ chỉ cần test xanh.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.names.outputs.tag }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Dang nhap GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tên image trên GHCR phải viết thường toàn bộ; GitHub trả "Tynab" ở
+      # github.repository_owner nên phải hạ chữ thường, không là push sẽ đỏ.
+      - name: Tinh ten image
+        id: names
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "backend=ghcr.io/${owner}/capstone-project-backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${owner}/capstone-project-frontend" >> "$GITHUB_OUTPUT"
+          echo "tag=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Build va push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ steps.names.outputs.backend }}:${{ steps.names.outputs.tag }}
+            ${{ steps.names.outputs.backend }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build va push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          # Đường dẫn tương đối: request /api đi qua nginx của chính container.
+          build-args: |
+            REACT_APP_API_URL=/api
+          tags: |
+            ${{ steps.names.outputs.frontend }}:${{ steps.names.outputs.tag }}
+            ${{ steps.names.outputs.frontend }}:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
