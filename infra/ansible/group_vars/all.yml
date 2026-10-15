@@ -1,0 +1,14 @@
+---
+# Biến dùng chung cho mọi play. IP khai báo một chỗ để đổi mạng lab chỉ sửa nơi này.
+stack_name: capstone
+lab_manager_ip: "192.168.56.10"
+lab_worker_ip: "192.168.56.11"
+app_dir: /opt/capstone
+app_url: "http://192.168.56.10"
+
+# Hostname hiển thị trong `docker node ls`. Đặt ở đây chứ không chỉ dựa vào
+# Vagrant: nếu lần `vagrant up` đầu hết thời gian chờ thì bước đặt hostname của
+# Vagrant không chạy, node sẽ join swarm với tên "vagrant" (đã gặp thật).
+lab_hostnames:
+  swarm_manager: swarm-manager
+  swarm_worker: swarm-worker

@@ -1,0 +1,80 @@
+---
+- name: Đặt hostname đúng cho node
+  hostname:
+    name: "{{ lab_hostnames[inventory_hostname] }}"
+
+- name: Cài gói nền
+  apt:
+    name: [ca-certificates, curl, gnupg, python3-pip, ufw, acl]
+    state: present
+    update_cache: true
+
+# VM không có Guest Additions thì đồng hồ trôi (đã gặp thật: worker lệch host 19
+# phút sau một lần reset). Swarm TỪ CHỐI node join nếu giờ lệch, vì CA certificate
+# của cụm được ký theo giờ manager — "certificate is not yet valid". Bật NTP và
+# CHỜ đồng bộ xong trước khi làm bất cứ việc gì với swarm.
+- name: Bật đồng bộ thời gian qua NTP
+  command: timedatectl set-ntp true
+  changed_when: false
+
+- name: Chờ đồng hồ đồng bộ (bắt buộc trước khi join swarm)
+  command: timedatectl show -p NTPSynchronized --value
+  register: ntp_state
+  until: ntp_state.stdout == "yes"
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: Tạo /etc/apt/keyrings
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Tải GPG key của Docker
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Thêm repo Docker
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable"
+    filename: docker
+    state: present
+
+- name: Cài Docker Engine + compose plugin
+  apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    state: present
+    update_cache: true
+
+- name: Bật docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+# Ansible đang chạy bằng user vagrant; thêm group docker chỉ có tác dụng cho
+# phiên đăng nhập MỚI, nên mọi lệnh docker về sau trong playbook đều dùng become.
+- name: Thêm vagrant vào group docker
+  user:
+    name: vagrant
+    groups: docker
+    append: true
+
+- name: UFW — cho phép các cổng của lab
+  ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop:
+    - { port: "22",   proto: tcp }   # SSH giữa hai VM (Ansible dùng đường này)
+    - { port: "2377", proto: tcp }   # quản lý swarm
+    - { port: "7946", proto: tcp }   # gossip giữa các node
+    - { port: "7946", proto: udp }
+    - { port: "4789", proto: udp }   # overlay network (VXLAN)
+    - { port: "80",   proto: tcp }   # app
+    - { port: "9090", proto: tcp }   # prometheus
+    - { port: "3001", proto: tcp }   # grafana
+    - { port: "8025", proto: tcp }   # mailpit
