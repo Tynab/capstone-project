@@ -16,11 +16,11 @@ Version control: repo git ở **gốc dự án `../`** (không phải trong `fro
 npm install        # bắt buộc trước khi chạy bất cứ thứ gì
 npm start          # dev server tại http://localhost:3000
 npm run build      # build production vào build/
-npm test           # jest watch mode — frontend KHÔNG có file test nào; bộ test thật nằm ở ../e2e
+npm test           # jest watch mode — 47 unit test (reducer, utils, lớp api, component)
 ```
 
-- Chạy test một lần (không watch): `npm test -- --watchAll=false` hoặc `CI=true npm test`.
-- Có **cả** `package-lock.json` lẫn `yarn.lock` — chọn một package manager rồi giữ nguyên lockfile tương ứng.
+- Chạy test một lần (không watch): `npm test -- --watchAll=false` hoặc `CI=true npm test`. Bộ unit test này mock toàn bộ `src/api/*` nên **không cần server**; luồng thật xuyên tầng (đăng ký → CRUD → F5 → đăng xuất) vẫn do `../e2e` phủ — test API xanh không chứng minh app không trắng màn hình.
+- Chỉ dùng **npm** — `yarn.lock` đã bị xoá (trước đây tồn tại song song hai lockfile nên npm và yarn có thể dùng hai cây dependency khác nhau).
 - Không có script lint riêng; ESLint của CRA (`eslintConfig` trong `package.json`) chạy kèm cả `start` lẫn `build`, và **`npm run build` fail nếu có lint error** (tắt bằng `DISABLE_ESLINT_PLUGIN=true`).
 - Tailwind v3: CRA 5 tự chèn plugin `tailwindcss` khi thấy `tailwind.config.js` ở **gốc `frontend/`** — thư mục chạy `npm` (`react-scripts@5.0.1` dò theo `paths.appPath`, không phải gốc repo). **Thêm `postcss.config.js` sẽ không có tác dụng.**
 - Cấu hình API qua `.env` (xem `.env.example`) — CRA chỉ nhúng biến có tiền tố `REACT_APP_`.

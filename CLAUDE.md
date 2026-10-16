@@ -18,7 +18,7 @@ Stack hiện có **13 service** (12 khi chưa bật Cloudflare Tunnel): thêm `p
   Tunnel phải là tunnel **riêng** của lab: dùng chung với tunnel của site khác sẽ làm site kia hỏng
   lúc có lúc không (connector lab không với tới origin của site đó).
 
-Đặc điểm quan trọng khi làm việc trong repo này: **máy Windows không có Docker** — mọi lệnh `docker` phải chạy trong VM qua `cd infra && vagrant ssh manager -c "sudo docker ..."`. Hạ tầng chỉ có thật sau khi `infra\setup.cmd` chạy xong, và CI chỉ deploy được khi runner self-hosted đang online (VM đang bật).
+Đặc điểm quan trọng khi làm việc trong repo này: **máy Windows không có Docker** — mọi lệnh `docker` phải chạy trong VM qua `cd infra && vagrant ssh manager -c "sudo docker ..."`. Hạ tầng chỉ có thật sau khi `infra\setup.cmd` chạy xong, và CI chỉ deploy được khi runner self-hosted đang online (VM đang bật). Muốn dọn thì dùng `infra\destroy.cmd` với 3 mức (`state` giữ VM chỉ dọn bên trong, `vm` xoá 2 VM, `full` xoá thêm khoá SSH/token tunnel/box) — **luôn chạy `-DryRun` trước**, script tự sao lưu MongoDB và tự gỡ đăng ký runner; chi tiết ở [infra/README.md](infra/README.md).
 
 ## Bản đồ repo và thứ tự đọc
 
@@ -59,16 +59,16 @@ npm run build              # build production vào build/ (đã có sẵn, bị 
 npm run format             # prettier --write "src/**/*.{js,jsx,css}" — chỉ áp dụng cho src/
 ```
 
-- `npm test` là jest ở watch mode; repo **không có file test nào** ở frontend. Chạy một lần: `CI=true npm test` hoặc `npm test -- --watchAll=false`.
-- Có cả `package-lock.json` lẫn `yarn.lock` — chọn một package manager rồi giữ nguyên.
+- `npm test` là jest ở watch mode. Có bộ unit test 47 ca (reducer, utils, lớp api, component Login/ResetPassword/CreateTask/Task — mock toàn bộ `src/api/*`, không cần server); file test đặt cạnh mã nguồn dạng `*.test.js`/`*.test.jsx`, matcher jest-dom nạp qua `src/setupTests.js`. Chạy một lần: `CI=true npm test` hoặc `npm test -- --watchAll=false`.
+- Chỉ dùng npm — `yarn.lock` đã bị xoá (trước đây tồn tại song song hai lockfile khiến npm và yarn dùng hai cây dependency khác nhau).
 
-### E2E — [e2e/](e2e/) — đây là bộ test duy nhất thực sự chạy
+### E2E — [e2e/](e2e/) — tầng duy nhất chạy trên hạ tầng thật
 
 ```bash
 cd e2e
 npm install                # lần đầu tải binary mongod (~80MB), dùng lại cache về sau
-npm run test:api           # 43 khẳng định tầng HTTP: auth, guard bảo mật, hợp đồng API, 404/lỗi
-npm run test:browser       # 13 khẳng định qua Chrome thật (cần Chrome/Edge, hoặc đặt CHROME_PATH)
+npm run test:api           # 49 khẳng định tầng HTTP: auth, guard bảo mật, hợp đồng API, 404/lỗi
+npm run test:browser       # 14 khẳng định qua Chrome thật (cần Chrome/Edge, hoặc đặt CHROME_PATH)
 ```
 
 - Cần Node 18+ (theo [e2e/README.md](e2e/README.md) — dùng `fetch` built-in). Cổng mặc định: API 8123 (api) / 8124 (browser), web 3000; đổi bằng `E2E_API_PORT`, `E2E_WEB_PORT`.
@@ -106,10 +106,10 @@ Mọi response là object JSON: `message` cho người đọc, key theo tài ngu
 
 ## Kiểm chứng trước khi báo xong
 
-Unit test của backend (`npm test`) chỉ phủ các hàm thuần; frontend không có test, và linter duy nhất là ESLint mặc định của CRA chạy kèm `start`/`build` — không đủ lưới để chặn lỗi tích hợp. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
+Unit test của backend (`npm test`, 15 ca) chỉ phủ hàm thuần + lõi rateLimit; unit test frontend (47 ca) mock toàn bộ lớp API; linter duy nhất là ESLint mặc định của CRA chạy kèm `start`/`build` — không đủ lưới để chặn lỗi tích hợp. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
 
 1. Sửa backend hoặc hợp đồng API → `cd e2e && npm run test:api`.
-2. Đụng vào UI/state/reducer → thêm cả `npm run test:browser`; test API xanh không chứng minh app không trắng màn hình (đã từng có đúng tình huống đó).
+2. Đụng vào UI/state/reducer → thêm cả `npm run test:browser` **và** `CI=true npm --prefix frontend test`; test API xanh không chứng minh app không trắng màn hình (đã từng có đúng tình huống đó), còn unit test frontend không dựng nổi luồng thật xuyên tầng.
 3. Đụng vào `infra/` → `cd infra && vagrant provision --provision-with ansible`, rồi kiểm theo mục "Kiểm chứng" trong [infra/README.md](infra/README.md); phải chạy được **hai lần liên tiếp** mà lần thứ hai báo `changed=0` (mọi role đều idempotent — đã từng vỡ ở lần chạy thứ hai).
 4. Nêu rõ đã chạy gì và kết quả ra sao — kể cả khi đỏ.
 
