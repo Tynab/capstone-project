@@ -70,7 +70,6 @@
     "browserslist@^4": "4.29.3",
     "cross-spawn@^7": "7.0.6",
     "json5@^2": "2.2.3",
-    "serialize-javascript@^6": "7.0.5",
     "tough-cookie@^4": "4.1.4",
     "follow-redirects@^1": "1.16.1",
     "webpack-dev-middleware@^5": "5.3.4",
@@ -100,6 +99,6 @@
     "resolve-url-loader@^4": "5.0.0",
     "svgo@^1": "2.8.4",
     "uuid@^8": "11.1.1",
-    "serialize-javascript@^4": "7.0.5"
+    "serialize-javascript": "7.0.5"
   }
 }
