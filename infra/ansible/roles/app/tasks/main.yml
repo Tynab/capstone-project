@@ -9,13 +9,16 @@
     # thư mục này để gọi deploy.sh (đã gặp thật: lỗi 126 Permission denied).
     mode: "0755"
 
-# Secret nằm ngoài repo và ngoài GitHub: sinh tại chỗ, quyền 0700.
+# Secret nằm ngoài repo và ngoài GitHub: sinh tại chỗ.
+# 0750 + group docker (không phải 0700): user ghrunner của job deploy CI phải ĐI QUA
+# được thư mục này để `docker stack deploy` đọc file secret tạo secret trong swarm.
 - name: Tạo thư mục secrets
   file:
     path: "{{ app_dir }}/secrets"
     state: directory
     owner: vagrant
-    mode: "0700"
+    group: docker
+    mode: "0750"
 
 # lookup('password') GHI file ở lần chạy đầu và ĐỌC LẠI ở các lần sau, nên
 # provision lại không đổi mật khẩu (đổi mật khẩu Mongo sẽ làm app mất kết nối DB).
@@ -26,6 +29,20 @@
     jwt_secret: "{{ lookup('password', app_dir + '/secrets/jwt_secret chars=ascii_letters,digits length=48') }}"
     mongo_root_password: "{{ lookup('password', app_dir + '/secrets/mongo_root chars=ascii_letters,digits length=32') }}"
     grafana_admin_password: "{{ lookup('password', app_dir + '/secrets/grafana_admin chars=ascii_letters,digits length=24') }}"
+    # Portainer từ chối mật khẩu < 12 ký tự; --admin-password-file đọc bản PLAINTEXT này.
+    portainer_admin_password: "{{ lookup('password', app_dir + '/secrets/portainer_admin chars=ascii_letters,digits length=24') }}"
+
+# Đặt SAU task sinh secret (lúc đó file mới tồn tại): lookup('password') tạo file 0600
+# của user vagrant, đổi sang 0640 group docker để `docker stack deploy` (chạy bằng vagrant
+# hoặc ghrunner) đọc được khi tạo secret trong swarm. Nội dung file không đổi qua các lần
+# provision nên task này chỉ áp quyền — trừ lần đầu, khi nó tạo ra secret của swarm.
+- name: Đặt quyền cho file secret Portainer
+  file:
+    path: "{{ app_dir }}/secrets/portainer_admin"
+    owner: vagrant
+    group: docker
+    mode: "0640"
+  notify: deploy stack
 
 # Token tunnel đến từ ngoài (infra/.env -> Vagrantfile -> extra_vars), không sinh tự động.
 # Rỗng nghĩa là "không có tunnel": role vẫn chạy bình thường, chỉ bỏ service cloudflared.

@@ -10,6 +10,12 @@ volumes:
   mongo_data:
   prom_data:
   grafana_data:
+  portainer_data:
+
+secrets:
+  portainer_admin:
+    # File do Ansible sinh và đặt quyền 0640 group docker (xem role app).
+    file: ./secrets/portainer_admin
 
 services:
   mongo:
@@ -204,6 +210,54 @@ services:
     networks: [capstone]
     deploy:
       mode: global
+
+  # ------------------------------- quản trị -------------------------------
+  # UI + API Portainer. CHỈ mở trên mạng host-only (http://192.168.56.10:9000),
+  # KHÔNG đưa ra Internet. Ghim manager.
+  portainer:
+    image: portainer/portainer-ce:2.45.2
+    # -H ...: dùng agent (mount docker.sock nằm ở agent) nên bản thân service này
+    # KHÔNG cần socket. --admin-password-file đọc bản plaintext, CHỈ có tác dụng ở
+    # lần tạo admin đầu tiên; các lần sau Portainer ghi log "instance already has an
+    # administrator user defined" rồi bỏ qua (đã đối chiếu mã nguồn 2.45.2).
+    command:
+      - -H
+      - tcp://tasks.agent:9001
+      - --tlsskipverify
+      - --admin-password-file
+      - /run/secrets/portainer_admin
+    volumes:
+      - portainer_data:/data
+    secrets:
+      # target tường minh: mặc định swarm mount theo tên ĐÃ GHÉP STACK
+      # (capstone_portainer_admin) chứ không phải tên viết trong file này.
+      - source: portainer_admin
+        target: portainer_admin
+    ports:
+      - target: 9000
+        published: 9000
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  # Một container mỗi node: đưa docker.sock + volume của node đó vào cụm Portainer.
+  # Không có agent thì UI chỉ thấy container/image/volume của node manager (mongo và
+  # replica backend/frontend nằm trên worker sẽ biến mất).
+  portainer-agent:
+    image: portainer/agent:2.45.2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks: [capstone]
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
 
 configs:
   prometheus_yml:

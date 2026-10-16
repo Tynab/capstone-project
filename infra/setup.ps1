@@ -47,7 +47,7 @@ $vboxCandidates = @("$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe")
 $vagrantCandidates = @("$env:ProgramFiles\Vagrant\bin\vagrant.exe",
                        "$env:ProgramFiles\HashiCorp\Vagrant\bin\vagrant.exe")
 
-Write-Host "== 1/6 Kiem tra cong cu ==" -ForegroundColor Cyan
+Write-Host "== 1/7 Kiem tra cong cu ==" -ForegroundColor Cyan
 if (-not (Have winget)) { throw "Thieu winget (App Installer). Cai tu Microsoft Store roi chay lai." }
 
 # Hai công cụ được kiểm tra ĐỘC LẬP: máy có thể đã có sẵn một trong hai.
@@ -82,29 +82,38 @@ if ($LASTEXITCODE -ne 0) {
     exit 2
 }
 
-Write-Host "== 2/6 Canh bao Hyper-V / VT-x ==" -ForegroundColor Cyan
+Write-Host "== 2/7 Canh bao Hyper-V / VT-x ==" -ForegroundColor Cyan
 $hv = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent
 if ($hv) { Write-Warning "Hyper-V/WSL2 dang bat: VirtualBox se chay qua WHPX, cham hon. Script khong tu tat tinh nang Windows." }
 $vt = (Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled
 if ($vt -eq $false) { Write-Warning "VT-x co ve dang tat trong BIOS/UEFI." }
 
-Write-Host "== 3/6 Firewall cho mang host-only ==" -ForegroundColor Cyan
+Write-Host "== 3/7 Firewall cho mang host-only ==" -ForegroundColor Cyan
 # Truy cập từ trình duyệt trên Windows vào 192.168.56.x đi qua adapter host-only,
 # mà Windows Firewall thường coi mạng đó là "Public" và chặn vào.
 $rule = "capstone-lab-hostonly"
-$ruleCmd = "netsh advfirewall firewall add rule name=$rule dir=in action=allow protocol=TCP localport=80,9090,3001,8025 remoteip=192.168.56.0/24"
-& netsh advfirewall firewall show rule name=$rule *> $null
-if ($LASTEXITCODE -ne 0) {
+$rulePorts = "80,9090,3001,8025,9000"
+$ruleCmd = "netsh advfirewall firewall add rule name=$rule dir=in action=allow protocol=TCP localport=$rulePorts remoteip=192.168.56.0/24"
+$show = (& netsh advfirewall firewall show rule name=$rule 2>&1 | Out-String)
+$ruleExists = ($LASTEXITCODE -eq 0)
+# Portainer thêm sau -> rule cũ (chỉ 80,9090,3001,8025) phải được TẠO LẠI; nếu chỉ kiểm
+# tra "rule có tồn tại" thì cổng 9000 vẫn bị chặn và trình duyệt không mở được.
+if ((-not $ruleExists) -or ($show -notmatch "9000")) {
+    if ($ruleExists) {
+        Start-Process powershell -Verb RunAs -Wait -ArgumentList @("-NoProfile", "-Command", "netsh advfirewall firewall delete rule name=$rule")
+    }
     try {
         Start-Process powershell -Verb RunAs -Wait -ArgumentList @("-NoProfile", "-Command", $ruleCmd)
-        Write-Host "Da them rule firewall '$rule'."
+        Write-Host "Da them rule firewall '$rule' (cong: $rulePorts)."
     } catch {
         Write-Warning "Khong them duoc rule firewall. Neu trinh duyet khong mo duoc 192.168.56.10, chay tay (admin):"
         Write-Warning "  $ruleCmd"
     }
+} else {
+    Write-Host "Rule firewall '$rule' da du cong."
 }
 
-Write-Host "== 4/6 Khoa SSH cua lab ==" -ForegroundColor Cyan
+Write-Host "== 4/7 Khoa SSH cua lab ==" -ForegroundColor Cyan
 # Khoá này để Ansible trong VM manager SSH sang worker. Không phải khoá của
 # Vagrant: Vagrant chỉ dùng nó khi cần, còn playbook trỏ thẳng vào đường dẫn.
 $keyDir = Join-Path $PSScriptRoot ".ssh"
@@ -119,7 +128,7 @@ if (-not (Test-Path $key)) {
     Write-Host "Da co $key"
 }
 
-Write-Host "== 5/6 Token dang ky GitHub runner ==" -ForegroundColor Cyan
+Write-Host "== 5/7 Token dang ky GitHub runner ==" -ForegroundColor Cyan
 # Token sống ~1 giờ; lấy ngay trước khi provision để Ansible kịp dùng.
 $env:RUNNER_TOKEN = ""
 if (Have gh) {
@@ -136,7 +145,21 @@ if (-not $env:RUNNER_TOKEN) {
     Write-Warning "Thieu RUNNER_TOKEN -> role runner se bo qua dang ky; chay lai sau khi co token."
 }
 
-Write-Host "== 6/6 Dung VM va provision ==" -ForegroundColor Cyan
+Write-Host "== 6/7 Cau hinh Cloudflare Tunnel (infra\.env) ==" -ForegroundColor Cyan
+# File này chứa token tunnel. Không có token thì stack vẫn dựng đủ phần còn lại,
+# chỉ thiếu service cloudflared -> cảnh báo để không ai tưởng domain đã hoạt động.
+$envFile = Join-Path $PSScriptRoot ".env"
+if (-not (Test-Path $envFile)) {
+    Copy-Item (Join-Path $PSScriptRoot ".env.example") $envFile
+    Write-Host "Da tao infra\.env tu mau (dang de trong token)."
+}
+if ((Get-Content $envFile -Raw) -match "CLOUDFLARE_TUNNEL_TOKEN=\s*$") {
+    Write-Warning "Chua co CLOUDFLARE_TUNNEL_TOKEN -> stack se KHONG dung cloudflared."
+    Write-Warning "Muon bat: mo https://dash.cloudflare.com -> Networking -> Tunnels -> Add a replica,"
+    Write-Warning "copy chuoi eyJ... roi dan vao infra\.env, sau do chay lai script nay."
+}
+
+Write-Host "== 7/7 Dung VM va provision ==" -ForegroundColor Cyan
 $vagrantfile = Join-Path $repoRoot "infra\Vagrantfile"
 if (-not (Test-Path $vagrantfile)) {
     # Giai đoạn đầu (chưa có Vagrantfile) script chỉ có việc cài công cụ. Tự bỏ
@@ -188,6 +211,7 @@ if (-not (Test-Path $vagrantfile)) {
 Write-Host ""
 Write-Host "Xong. Truy cap:" -ForegroundColor Green
 Write-Host "  App        http://192.168.56.10"
+Write-Host "  Portainer  http://192.168.56.10:9000  (mat khau: PORTAINER_ADMIN_PASSWORD trong /opt/capstone/.env)"
 Write-Host "  Prometheus http://192.168.56.10:9090"
 Write-Host "  Grafana    http://192.168.56.10:3001"
 Write-Host "  Mailpit    http://192.168.56.10:8025"

@@ -82,6 +82,9 @@
     # ở đây; thiếu hai cổng này thì Prometheus mất 4/7 target khi bật UFW.
     - { port: "9100", proto: tcp }
     - { port: "8080", proto: tcp }
+    # Portainer: chỉ dùng trong mạng host-only. Agent không cần cổng host nào —
+    # nó nói chuyện với Portainer qua overlay network (xem infra/stack/docker-stack.yml).
+    - { port: "9000", proto: tcp }
 
 - name: UFW — bật tường lửa
   ufw:
