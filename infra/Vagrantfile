@@ -12,6 +12,22 @@ LAB_KEY_PRIV = File.join(__dir__, ".ssh", "lab_key")
 # RUNNER_TOKEN do infra/setup.ps1 đặt; rỗng thì role runner tự bỏ qua và báo cách chạy lại.
 RUNNER_TOKEN = ENV.fetch("RUNNER_TOKEN", "")
 
+# Token Cloudflare đọc từ infra/.env (đã gitignore) chứ KHÔNG lấy từ biến môi trường:
+# `vagrant provision` còn chạy tay nhiều lần sau này, biến môi trường sẽ mất và tunnel
+# lặng lẽ biến mất khỏi stack. File thiếu = token rỗng = không dựng cloudflared.
+INFRA_ENV_PATH = File.join(__dir__, ".env")
+INFRA_ENV = if File.exist?(INFRA_ENV_PATH)
+  File.readlines(INFRA_ENV_PATH, chomp: true)
+      .map(&:strip)
+      .reject { |line| line.empty? || line.start_with?("#") }
+      .map { |line| line.split("=", 2) }
+      .to_h
+      .transform_values { |value| value.to_s.gsub(/\A"|"\z/, "") }
+else
+  {}
+end
+CLOUDFLARE_TUNNEL_TOKEN = INFRA_ENV.fetch("CLOUDFLARE_TUNNEL_TOKEN", "")
+
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "bento/ubuntu-22.04"
   # Máy bật Hyper-V thì VirtualBox chạy qua WHPX, boot chậm hơn hẳn: mặc định
@@ -65,7 +81,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       # Mặc định ansible_local giới hạn vào chính máy đang provision -> phải mở
       # rộng, nếu không playbook chỉ chạy trên manager và worker bị bỏ quên.
       a.limit = "all"
-      a.extra_vars = { runner_token: RUNNER_TOKEN }
+      a.extra_vars = { runner_token: RUNNER_TOKEN, cloudflare_tunnel_token: CLOUDFLARE_TUNNEL_TOKEN }
     end
   end
 end

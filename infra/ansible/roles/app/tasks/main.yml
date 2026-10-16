@@ -27,6 +27,13 @@
     mongo_root_password: "{{ lookup('password', app_dir + '/secrets/mongo_root chars=ascii_letters,digits length=32') }}"
     grafana_admin_password: "{{ lookup('password', app_dir + '/secrets/grafana_admin chars=ascii_letters,digits length=24') }}"
 
+# Token tunnel đến từ ngoài (infra/.env -> Vagrantfile -> extra_vars), không sinh tự động.
+# Rỗng nghĩa là "không có tunnel": role vẫn chạy bình thường, chỉ bỏ service cloudflared.
+- name: Chuẩn hoá token tunnel thành cờ bật/tắt
+  set_fact:
+    cloudflare_tunnel_token: "{{ cloudflare_tunnel_token | default('', true) }}"
+    cloudflare_tunnel_enabled: "{{ (cloudflare_tunnel_token | default('', true) | length) > 0 }}"
+
 - name: Ghi /opt/capstone/.env
   template:
     src: env.j2

@@ -32,6 +32,9 @@ pnpm-debug.log*
 # --------------------------------------------------- hạ tầng lab (infra/)
 # Khoá SSH do infra/setup.ps1 sinh ra, không bao giờ commit.
 infra/.ssh/
+# File .env của hạ tầng: chỉ chứa token Cloudflare Tunnel (mẫu ở infra/.env.example).
+# Rule `.env` ở trên đã chặn sẵn, dòng này để người đọc thấy ngay ý định.
+infra/.env
 # Trạng thái máy ảo và file tạm của Vagrant/Ansible.
 .vagrant/
 *.retry
