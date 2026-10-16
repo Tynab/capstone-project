@@ -116,6 +116,7 @@ admin với đúng mật khẩu đó.
 | Xem log một service | `cd infra && vagrant ssh manager -c "sudo docker service logs -f capstone_backend"` |
 | Trạng thái stack | `vagrant ssh manager -c "sudo docker stack services capstone"` |
 | Deploy tay một tag (rollback) | `vagrant ssh manager -c "sudo /opt/capstone/deploy.sh sha-abc1234"` |
+| Provision có kéo ảnh về `:latest` không | **Có** — `deploy.sh` không truyền tag sẽ deploy `${BACKEND_REPO}:latest`; CI thì luôn ghim `sha-xxxx`. Muốn giữ đúng bản đang chạy thì truyền tag như dòng trên |
 | Lấy mật khẩu lab | `vagrant ssh manager -c "sudo cat /opt/capstone/.env"` |
 | Đăng ký lại runner khi token cũ hết hạn | `$env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token); cd infra; vagrant provision --provision-with ansible` |
 
@@ -153,7 +154,7 @@ Cách trên chạy một container `mongo:6` tạm trong overlay network và tr�
 | Domain công khai chết mà `docker stack services` vẫn báo `cloudflared 1/1` và deploy vẫn xanh | **Token đúng định dạng nhưng sai** — cloudflared KHÔNG thoát, nó retry mãi (đo thật 2026-10-16). Chỉ token sai định dạng mới làm container thoát (`0/1`) | Xem log connector như dòng trên; sửa `infra/.env` rồi provision. Không healthcheck được: image distroless nên trong container không có `wget`/`curl` |
 | Site khác trên cùng domain bị 502 lúc có lúc không | Dán token của tunnel đang phục vụ site đó → connector lab thành replica thứ hai, mà lab không với tới origin của site kia | Tạo tunnel RIÊNG cho lab (xem mục Cloudflare Tunnel); xoá token trong `infra/.env` rồi provision để gỡ connector ngay |
 | Portainer `0/1` rồi restart liên tục | Không đọc được file secret, hoặc không nối được agent | `docker service logs capstone_portainer`; file `/opt/capstone/secrets/portainer_admin` phải là `0640 vagrant:docker` |
-| Portainer UI chỉ thấy 1 node | `portainer-agent` không lên ở node kia | `docker service ps capstone-portainer-agent`; agent là service `global` nên phải `2/2` |
+| Portainer UI chỉ thấy 1 node | `portainer-agent` không lên ở node kia | `docker service ps capstone_portainer-agent`; agent là service `global` nên phải `2/2` |
 | Access log nginx toàn `10.0.x.x` | Request đi qua tunnel mà `real_ip` không chạy, hoặc ảnh frontend cũ chưa được CI deploy | Kiểm 3 dòng `set_real_ip_from` / `real_ip_header` / `real_ip_recursive` trong `frontend/nginx.conf` và ảnh đang chạy của service `frontend` |
 
 ## Kiểm chứng
@@ -205,6 +206,12 @@ Muốn chuyển sang private:
   3001, 8025, 9100, 8080). Thêm service publish cổng mới thì phải thêm cổng đó vào role `common`,
   nếu không Prometheus/truy cập sẽ mất. `cloudflared` **không cần cổng nào** (chỉ kết nối ra ngoài;
   agent của Portainer cũng không cần vì nó nói chuyện với Portainer qua overlay network).
+- `frontend/nginx.conf` tin `CF-Connecting-IP` từ mọi peer trong `10.0.0.0/8`, mà gateway của routing
+  mesh cũng nằm trong dải đó — nên **trong mạng host-only**, một client tự gửi header này sẽ đổi được
+  IP mà backend nhìn thấy (chỉ ảnh hưởng rate limit trong lab). Từ Internet thì không: đo thật
+  2026-10-16, mọi request mang `CF-Connecting-IP` qua domain đều bị Cloudflare trả **403** và không
+  tới được nginx. Khi **dựng lại cụm**: tạo overlay `capstone` với `--subnet` cố định trong role
+  `swarm_manager` rồi đổi `set_real_ip_from` về đúng subnet đó.
 - Windows Firewall cần rule cho mạng host-only với các cổng 80, 9000, 9090, 3001, 8025 —
   `infra\setup.cmd` tự thêm (rule cũ thiếu cổng 9000 sẽ được tạo lại).
 - `TRUST_PROXY=1` bắt buộc vì backend nằm sau nginx — thiếu nó thì rate limit

@@ -33,7 +33,7 @@ kiểm chứng cũ), đưa Portainer/Grafana ra Internet, backup dữ liệu Por
 | Quyết định | Lý do |
 |---|---|
 | **Tunnel remotely-managed, tạo trên dashboard; connector là service trong stack** | Người dùng chọn cách này: ít mảnh nhất, không cài `cloudflared` trên Windows. Connector chạy trong chính stack nên vào thẳng overlay network, gọi được tên service `frontend`/`backend`, và **chỉ kết nối ra ngoài** (cổng 7844) nên không phải mở thêm cổng vào. |
-| **Token đi qua `/opt/capstone/.env`, không dùng Docker secret** | Secret của swarm **bất biến**: `docker stack deploy` không cập nhật nội dung secret đã tồn tại, nên đổi token sẽ im lặng giữ token cũ ⇒ vi phạm nguyên tắc "mọi thứ tự động". Đi qua `.env` thì đổi token = sửa 1 dòng + provision, `deploy.sh` cập nhật service, task tự khởi động lại. Đây cũng là chỗ mọi secret khác của lab đang nằm. |
+| **Token đi qua `/opt/capstone/.env`, không dùng Docker secret** | Lý do thật: (1) **đồng nhất** — mọi secret khác của lab (JWT, Mongo, Grafana) cũng nằm trong `.env` và được nội suy vào file stack, thêm một cơ chế thứ hai chỉ để chứa một biến là thừa; (2) **đổi token = một lần provision**, không phải đụng vào swarm; (3) `.env` đã có đúng quyền cho cả `vagrant` lẫn `ghrunner` của CI đọc. (Ghi chú: câu "secret của swarm bất biến" từng được dùng làm lý do ở bản đầu là **không chính xác** với Docker hiện đại — từ 17.12 `docker stack deploy` có cập nhật secret tạo từ file, nên lý do cũ đã bỏ.) |
 | **Portainer chạy kèm `portainer/agent` (`mode: global`)** | Không có agent thì chỉ thấy container/image/volume của node manager — mongo và replica backend/frontend trên worker sẽ biến mất khỏi UI. Có agent: thấy đủ cả 2 node. Không publish cổng 9001 ra host; Portainer nối agent qua overlay. |
 | **Mật khẩu admin Portainer sinh tự động + Docker secret** | Cùng chuẩn với JWT/Mongo/Grafana: không có bước tạo user bằng tay trên UI. Docker secret là cách chính docs Portainer mô tả; bất biến của secret không gây hại vì Portainer **chỉ đọc file lúc tạo admin lần đầu**. |
 | **`frontend/nginx.conf` lấy IP thật qua `real_ip`** | Bắt buộc, không phải tối ưu: nginx đang nối thêm IP của chính nó vào `X-Forwarded-For`, nên qua tunnel backend sẽ thấy IP container `cloudflared` cho **mọi** người dùng ⇒ 10 lần đăng nhập sai là khoá cả hệ thống. Chi tiết ở mục 6. |
@@ -173,10 +173,13 @@ browser → Cloudflare edge → cloudflared → nginx (frontend) → backend
                                          └─ hoặc → backend (đường capstone-api)
 ```
 
-Cloudflare ghi `CF-Connecting-IP` (đúng 1 IP, và theo tài liệu Cloudflare nó chỉ được gửi trên
-đường từ edge tới origin — trang lỗi 1000 còn liệt kê "request chứa header CF-Connecting-IP"
-là một nguyên nhân lỗi, tức client tự gửi header này không đi lọt) và `X-Forwarded-For`.
-cloudflared **không sửa** `X-Forwarded-For` (đã kiểm trong mã nguồn `ingress/origin_proxy.go`).
+Cloudflare ghi `CF-Connecting-IP` (đúng 1 IP) và `X-Forwarded-For`. cloudflared **không sửa**
+`X-Forwarded-For` (đã kiểm trong mã nguồn `ingress/origin_proxy.go`).
+
+**Đo thật 2026-10-16:** gửi 30 request qua `capstone.yamiannephilim.com` với `CF-Connecting-IP`
+giả khác nhau (và 1 request qua `capstone-api...`) → **Cloudflare trả 403 cho tất cả**, không
+request nào tới được nginx (access log trống). Tức trên đường công khai, giá trị nginx tin là
+giá trị Cloudflare ghi, client không chen vào được — mạnh hơn cả "ghi đè".
 
 **Vấn đề:** `frontend/nginx.conf` đang đặt `X-Forwarded-For: $proxy_add_x_forwarded_for`, tức
 nối thêm `$remote_addr` của nginx (là IP container `cloudflared`). Backend cấu hình
@@ -234,7 +237,7 @@ group `docker`**, file **`0640` group `docker`** — vì `docker stack deploy` c
 
 | File | Việc |
 |---|---|
-| `infra/stack/docker-stack.yml` → **`docker-stack.yml.j2`** | Thành template; bọc khối `cloudflared` bằng `{% if cloudflare_tunnel_enabled %}`. Các `${...}` compose giữ nguyên |
+| `infra/ansible/roles/app/templates/docker-stack.yml.j2` (chuyển từ `infra/stack/docker-stack.yml`) | Thành template; bọc khối `cloudflared` bằng `{% if cloudflare_tunnel_enabled %}`. Các `${...}` compose giữ nguyên. Đặt trong `roles/app/templates/` cạnh `env.j2`/`deploy.sh.j2`: để nguyên trong `infra/stack/` thì mỗi lần provision, task `copy` kéo file `.j2` sang `/opt/capstone` làm `changed` và handler deploy chạy lại vô ích (đo được: `changed=3` ở lần chạy thứ hai) |
 | `infra/ansible/roles/app/tasks/stack.yml` | Copy `stack/` → xoá bản `.j2` thô trong `/opt/capstone` → render template thành `/opt/capstone/docker-stack.yml` |
 | `infra/ansible/roles/app/tasks/main.yml` | Sinh secret `portainer_admin`; sửa quyền `secrets/`; ghi thêm env; cờ `cloudflare_tunnel_enabled`; in hướng dẫn khi tunnel tắt |
 | `infra/ansible/roles/app/templates/env.j2` | `CLOUDFLARE_TUNNEL_TOKEN`, `PORTAINER_ADMIN_PASSWORD`, `FRONTEND_URL`/`CORS_ORIGIN` theo điều kiện |
@@ -259,7 +262,7 @@ Không đổi: `.github/workflows/ci-cd.yml` (deploy vẫn đi qua `deploy.sh`),
 | Đổi token (rotate) | Sửa `infra/.env` → provision. `deploy.sh` cập nhật env của service, swarm thay task |
 | Gỡ tunnel | Xoá token trong `infra/.env` → provision. `--prune` xoá service `capstone_cloudflared` |
 | Deploy thường (CI) | Không đổi: job `deploy` gọi `/opt/capstone/deploy.sh <tag>` |
-| Kiểm tra token sai | **Đo thật 2026-10-16 (khác dự đoán ban đầu):** token đúng định dạng nhưng sai thì cloudflared **không thoát** — nó ghi `ERR Register tunnel error ... "Failed to get tunnel"` rồi retry mãi, service vẫn `1/1` và `deploy.sh` vẫn **xanh**. Chỉ token **sai định dạng** mới làm container thoát (`0/1` → deploy đỏ). Hệ quả: domain có thể chết công khai (502/1033) trong khi hệ thống báo thành công ⇒ phải xem log connector. Không tự động hoá được bằng healthcheck: image là distroless nên trong container không có `wget`/`curl` để gọi endpoint `/ready` |
+| Kiểm tra token sai | **Đo thật 2026-10-16 (khác dự đoán ban đầu):** token đúng định dạng nhưng sai thì cloudflared **không thoát** — nó ghi `ERR Register tunnel error ... "Failed to get tunnel"` rồi retry mãi, service vẫn `1/1` và `deploy.sh` vẫn **xanh**. Chỉ token **sai định dạng** mới làm container thoát — đo thật: task `exit 255` rồi crash-loop, service về `0/1`. Nhưng chính ca đó lại lộ ra **race trong `deploy.sh`**: lần chạy đầu nó vẫn trả **0** vì mẫu hội tụ đầu tiên rơi đúng lúc task CŨ còn sống; đã sửa (vòng hội tụ đòi **2 mẫu liên tiếp** + kiểm lại lần cuối sau healthcheck) và đo lại: ca này giờ cho `exit 1`. Hệ quả: domain có thể chết công khai (502/1033) trong khi hệ thống báo thành công ⇒ phải xem log connector. Không tự động hoá được bằng healthcheck: image là distroless nên trong container không có `wget`/`curl` để gọi endpoint `/ready` |
 
 Lưu ý vận hành: domain công khai **chỉ sống khi VM manager đang chạy**; token nằm trong lệnh
 cài đặt trên dashboard, ai có token cũng chạy được tunnel nên không dán vào chat/log.
