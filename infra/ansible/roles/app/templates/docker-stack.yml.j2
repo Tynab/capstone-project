@@ -262,6 +262,26 @@ services:
       restart_policy:
         condition: on-failure
 
+{% if cloudflare_tunnel_enabled %}
+  # Connector của Cloudflare Tunnel. CHỦ ĐỘNG kết nối ra ngoài (7844 TCP/UDP) nên
+  # không publish cổng nào và không cần mở thêm gì trên UFW. Nằm trong overlay
+  # capstone nên phân giải được tên service `frontend` / `backend` mà route trên
+  # dashboard trỏ tới. Token lấy từ .env (đổi token = sửa infra/.env + provision).
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.1
+    # Image đã có ENTRYPOINT ["cloudflared","--no-autoupdate"] -> không lặp lại cờ đó.
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+{% endif %}
+
 configs:
   prometheus_yml:
     file: ./prometheus.yml

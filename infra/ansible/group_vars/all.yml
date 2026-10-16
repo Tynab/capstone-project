@@ -6,6 +6,12 @@ lab_worker_ip: "192.168.56.11"
 app_dir: /opt/capstone
 app_url: "http://192.168.56.10"
 
+# Tên miền công khai qua Cloudflare Tunnel. Đổi domain chỉ sửa 3 dòng này rồi
+# provision (route trên dashboard vẫn phải khai lại cho khớp).
+public_domain: yamiannephilim.com
+frontend_host: "capstone.{{ public_domain }}"
+api_host: "capstone-api.{{ public_domain }}"
+
 # Hostname hiển thị trong `docker node ls`. Đặt ở đây chứ không chỉ dựa vào
 # Vagrant: nếu lần `vagrant up` đầu hết thời gian chờ thì bước đặt hostname của
 # Vagrant không chạy, node sẽ join swarm với tên "vagrant" (đã gặp thật).

@@ -70,3 +70,13 @@
 
 - name: Đặt file stack và cấu hình giám sát
   include_tasks: stack.yml
+
+# Không có token thì stack vẫn đủ phần còn lại; in cách bật để không ai phải đi tìm.
+- name: Nhắc cách bật Cloudflare Tunnel
+  debug:
+    msg: >-
+      Chưa có CLOUDFLARE_TUNNEL_TOKEN (infra/.env) -> KHÔNG dựng service cloudflared.
+      Muốn bật: tạo tunnel trên Cloudflare dashboard (Networking > Tunnels > Create Tunnel),
+      thêm 2 route Published application trỏ về http://frontend:80 và http://backend:8000,
+      dán token "eyJ..." vào infra/.env rồi chạy lại provision.
+  when: not cloudflare_tunnel_enabled
