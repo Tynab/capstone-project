@@ -192,6 +192,9 @@ vagrant status                                              # 2 VM running
 vagrant ssh manager -c "sudo docker node ls"                # 1 Leader + 1 Ready
 vagrant ssh manager -c "sudo docker stack services capstone" # 13 service đủ replica (12 nếu chưa bật tunnel)
 curl -s http://192.168.56.10:9000/api/system/status                         # JSON Portainer: {"Version":"2.45.2",...}
+# Portainer SỐNG chưa đủ — phải kiểm nó có nối được agent (endpoint đúng tên service):
+vagrant ssh manager -c "sudo docker service inspect capstone_portainer --format '{{json .Spec.TaskTemplate.ContainerSpec.Args}}'"   # phải thấy tcp://tasks.portainer-agent:9001
+vagrant ssh manager -c "sudo docker run --rm --network capstone nginx:alpine nslookup tasks.portainer-agent"                        # phải phân giải ra IP
 curl -s https://capstone-api.yamiannephilim.com/api/health                  # {"status":"ok"} — xuyên tunnel
 curl -s -o /dev/null -w "%{http_code}\n" https://capstone.yamiannephilim.com/active   # 200 (SPA fallback qua tunnel)
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.10/active   # 200 (SPA fallback)
