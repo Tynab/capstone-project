@@ -21,7 +21,7 @@ Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.gi
 
 Hai file CLAUDE.md ở thư mục con là bản chi tiết (kiến trúc, guard bảo mật, các lỗi đã từng xảy ra thật) — **đọc file tương ứng trước khi sửa `backend/` hoặc `frontend/`**. File ở gốc này chỉ chứa thứ liên quan nhiều phần cùng lúc.
 
-Tài liệu trạng thái: [CODE_REVIEW_BACKLOG.md](CODE_REVIEW_BACKLOG.md) (15 phát hiện còn đúng với mã hiện tại, không mục nào nghiêm trọng) và [frontend/CODE_REVIEW_CHECKLIST.md](frontend/CODE_REVIEW_CHECKLIST.md) (đã xong toàn bộ A/B/C).
+Không còn tài liệu nợ review: toàn bộ phát hiện của các vòng review trước (A/B/C và backlog 15 mục) đã được xử lý và kiểm chứng, nên hai file `CODE_REVIEW_BACKLOG.md` và `frontend/CODE_REVIEW_CHECKLIST.md` đã được xoá. Lịch sử nằm trong git; các quy ước còn hiệu lực thì ở lại trong manifest này và manifest thư mục con.
 
 Quy ước tài liệu: manifest duy nhất là `CLAUDE.md` (kể cả bản trong thư mục con). Không tạo `AGENTS.md` hay `.clinerules/`.
 
@@ -59,7 +59,7 @@ npm run format             # prettier --write "src/**/*.{js,jsx,css}" — chỉ 
 ```bash
 cd e2e
 npm install                # lần đầu tải binary mongod (~80MB), dùng lại cache về sau
-npm run test:api           # 40 khẳng định tầng HTTP: auth, guard bảo mật, hợp đồng API
+npm run test:api           # 43 khẳng định tầng HTTP: auth, guard bảo mật, hợp đồng API, 404/lỗi
 npm run test:browser       # 13 khẳng định qua Chrome thật (cần Chrome/Edge, hoặc đặt CHROME_PATH)
 ```
 
@@ -107,6 +107,4 @@ Không có unit test nào, và backend không có linter (frontend chỉ có ESL
 
 ## Việc còn tồn đã biết
 
-- Không có handler lỗi 4 tham số và không có catch-all 404: JSON sai định dạng gửi tới bất kỳ route nào (kể cả endpoint công khai) rơi vào handler mặc định của Express, trả **HTML kèm stack trace** thay vì envelope `{message}`. Cân nhắc khi viết health check cho Docker.
-- Không route ghi nào của `/api/task` có rate limit (`addTask`, `removeTask`, `updateTask`), mà mỗi lần thêm task lại gửi một mail.
-- Rate limit lưu trong `Map` của tiến trình (theo instance, mất khi restart) — chạy nhiều container thì giới hạn thực tế nhân theo số instance.
+- Rate limit lưu trong `Map` của tiến trình (theo instance, mất khi restart) — chạy nhiều container thì giới hạn thực tế nhân theo số instance. Đây là hạn chế duy nhất còn lại của API; muốn chính xác khi scale ngang phải thay bằng store dùng chung (Redis).

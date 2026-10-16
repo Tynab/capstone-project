@@ -17,7 +17,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 - Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js:64-102](server.js#L64-L102)).
 - `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js:16-19](server.js#L16-L19)).
 - Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `REACT_APP_API_URL`, mặc định `http://localhost:8000/api` ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
-- `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`; hiện có `smtpConfig.test.js`); backend không có lint. Test end-to-end thật nằm ở [../e2e](../e2e/README.md). Đóng gói và deploy: [../infra/README.md](../infra/README.md) (image dựng từ `backend/Dockerfile`, không cần Docker trên máy — build trong VM hoặc trên CI).
+- `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`): `smtpConfig`, `mailTransport`, `password`, `rateLimit`, `userModel`. `npm run format` chạy Prettier (cấu hình ở `.prettierrc`, dùng chung quy ước với frontend). Test end-to-end thật nằm ở [../e2e](../e2e/README.md). Đóng gói và deploy: [../infra/README.md](../infra/README.md) (image dựng từ `backend/Dockerfile`, không cần Docker trên máy — build trong VM hoặc trên CI).
 
 ### Biến môi trường (.env)
 
@@ -35,7 +35,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 |---|---|---|---|
 | `/api/health` | `/health` | không (probe không mang token) | không |
 | `/api/user` | `/login`, `/register`, `/getuser` | chỉ `/getuser` | `/login` 10/15ph, `/register` 20/giờ |
-| `/api/task` | `POST /addTask`, `GET /getTask`, `DELETE /removeTask/:id`, `PATCH /updateTask/:id` | tất cả | không |
+| `/api/task` | `POST /addTask`, `GET /getTask`, `DELETE /removeTask/:id`, `PATCH /updateTask/:id` | tất cả | ba route GHI 100/15phút; `getTask` không giới hạn |
 | `/api/forgotPassword` | `/forgotPassword`, `/resetPassword` | không | 5/giờ và 10/15ph |
 
 ### Xác thực
@@ -93,7 +93,7 @@ Guard hiện có ở `loginUser`, `registerUser`, `forgotPassword`, `resetPasswo
 
 ### Hợp đồng API
 
-Mọi response đều là **object JSON**: `message` cho người đọc, key đặt theo tài nguyên.
+Mọi response đều là **object JSON**: `message` cho người đọc, key đặt theo tài nguyên. Điều này đúng cả với lỗi hạ tầng: có catch-all 404 và error handler 4 tham số (đặt sau các router trong [server.js](server.js)) nên JSON sai định dạng trả `400 {message}` và đường dẫn lạ trả `404 {message}` — không bao giờ là trang HTML kèm stack trace.
 
 - `{user, token}` — `/user/login`, `/user/register`.
 - `{user}` — `/user/getuser` (404 nếu không tìm thấy).
