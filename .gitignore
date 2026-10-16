@@ -18,7 +18,7 @@ backend/.env
 frontend/.env
 
 # ------------------------------------------------------------- sản phẩm build
-frontend/build/
+frontend/dist/
 dist/
 coverage/
 

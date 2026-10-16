@@ -105,7 +105,7 @@ function Login() {
                     {isLoading ? "Signing in..." : "Login"}
                   </button>
                   <p className="text-sm font-semibold mt-2 pt-1 mb-0">
-                    Don't have an account?
+                    Don&apos;t have an account?
                     <Link
                       to={"/register"}
                       className="text-red-600 hover:text-red-700 focus:text-red-700 transition duration-200 ease-in-out ml-5"

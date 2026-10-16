@@ -1,3 +1,5 @@
+// Điểm vào của ứng dụng. Trước đây là src/index.js; đổi tên thành main.jsx vì Vite
+// (esbuild) chỉ hiểu JSX trong file .jsx — để nguyên .js là build báo lỗi cú pháp.
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";

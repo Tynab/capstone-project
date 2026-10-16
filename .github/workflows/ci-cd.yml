@@ -27,9 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 24 (LTS hiện tại) chứ không phải 20, vì hai lý do cụ thể:
+      # - Vitest 5 (bộ test frontend) khai engines: ^22.12.0 || ^24.0.0 — Node 20
+      #   không chạy được nó.
+      # - Trùng major với máy dev để tránh bẫy đã gặp thật: lockfile sinh bằng npm 11
+      #   (Node 24) bị npm 10 (Node 20) từ chối ở bước `npm ci`.
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
@@ -53,11 +58,16 @@ jobs:
       - name: Unit test backend
         run: npm --prefix backend test
 
-      # Jest của CRA mặc định ở watch mode (treo CI mãi); CI=true bắt chạy một
-      # lần rồi thoát, exit 0 khi xanh. Bộ test chốt reducer, lớp api và luồng
+      # Vitest chạy một lần rồi thoát (`vitest run`), không có watch mode như jest
+      # của CRA nên không cần CI=true. Bộ test chốt reducer, lớp api và luồng
       # đăng nhập/thêm task ở tầng component — không cần server thật.
       - name: Unit test frontend
-        run: CI=true npm --prefix frontend test
+        run: npm --prefix frontend test
+
+      # Vite KHÔNG chạy ESLint trong lúc build (CRA thì có, build đỏ nếu lint lỗi),
+      # nên lint phải là bước riêng — thiếu bước này là mất lưới lint mà không ai thấy.
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
 
       - name: Chạy e2e tầng API
         run: npm --prefix e2e run test:api
@@ -121,7 +131,7 @@ jobs:
           push: true
           # Đường dẫn tương đối: request /api đi qua nginx của chính container.
           build-args: |
-            REACT_APP_API_URL=/api
+            VITE_API_URL=/api
           tags: |
             ${{ steps.names.outputs.frontend }}:${{ steps.names.outputs.tag }}
             ${{ steps.names.outputs.frontend }}:latest

@@ -4,8 +4,10 @@ node_modules
 npm-debug.log*
 yarn-error.log*
 
-# build/ là sản phẩm của lần build trước — để CRA build lại từ source trong image.
+# dist/ là sản phẩm của lần build trước — để Vite build lại từ source trong image.
+# (Đổi từ build/ khi bỏ CRA; giữ cả hai để không vô tình đóng gói nhầm.)
 build
+dist
 
 # Secret và file cấu hình riêng của máy, trừ file mẫu.
 .env

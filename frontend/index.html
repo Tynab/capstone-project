@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Todo App — bài cuối khóa CyberSoft DevOps 04" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <!-- manifest.json + favicon + logo nằm trong public/, Vite phục vụ nguyên thư mục
+         đó ở gốc nên đường dẫn là /favicon.ico chứ không cần %PUBLIC_URL% như CRA. -->
+    <link rel="manifest" href="/manifest.json" />
+    <title>Todo App</title>
+  </head>
+  <body>
+    <noscript>Bật JavaScript để chạy ứng dụng.</noscript>
+    <div id="root"></div>
+    <!-- Vite đòi index.html ở GỐC frontend/ (CRA để trong public/) và tự chèn bundle
+         vào đây; file này là điểm vào duy nhất của ứng dụng. -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

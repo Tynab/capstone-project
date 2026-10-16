@@ -1,11 +1,16 @@
 import axios from "axios";
 import { readToken, clearToken } from "../utils/authStorage";
 
-// Đổi được lúc build qua REACT_APP_API_URL (CRA nhúng biến REACT_APP_* vào bundle).
-// Không để cứng localhost: bản deploy sẽ gọi vào chính máy của người dùng,
-// nên mọi request — kể cả link reset trong email — không bao giờ tới được backend.
+// Mặc định là đường dẫn TƯƠNG ĐỐI "/api" — chạy cùng origin với trang nên không có
+// CORS, không bị chặn mixed content khi trang chạy https, và không phụ thuộc tên miền:
+// production thì nginx của container frontend proxy sang backend, còn dev server thì
+// Vite proxy (xem `server.proxy` trong vite.config.mjs).
+//
+// Đặt VITE_API_URL (tiền tố VITE_ là bắt buộc, trước đây là REACT_APP_ của CRA) khi
+// muốn trỏ thẳng sang một API khác — giá trị được nhúng vào bundle LÚC BUILD, và khi đó
+// phải thêm origin của frontend vào CORS_ORIGIN ở backend.
 const instance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api",
+  baseURL: import.meta.env.VITE_API_URL || "/api",
 });
 
 // Gắn token vào mọi request. Trước đây mỗi chỗ gọi tự dựng header
