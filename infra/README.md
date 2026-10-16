@@ -327,9 +327,15 @@ Muốn chuyển sang private:
   frontend tự host cả font Poppins lẫn hai ảnh minh hoạ — thêm bất kỳ nguồn ngoài nào là phải mở CSP.
   Lưu ý `add_header` của nginx **không thừa kế** xuống location đã có `add_header` riêng, nên hai
   location asset phải nhắc lại `nosniff`.
-- **HSTS không đặt ở nginx** (nginx phục vụ HTTP, TLS do Cloudflare lo) — phải bật tay một lần ở
-  dashboard Cloudflare: **SSL/TLS → Edge Certificates → HSTS → Enable** (khuyến nghị max-age 6 tháng,
-  bật `Include subdomains`). Bật xong thì mọi truy cập http:// sẽ được ép sang https.
+- **HSTS đặt ở tầng origin để kiểm chứng được, không trông vào dashboard**:
+  `frontend/nginx.conf` gửi `Strict-Transport-Security: max-age=15552000; includeSubDomains`.
+  Nghe qua thì lạ (nginx phục vụ HTTP, TLS do Cloudflare lo) nhưng đúng: header này chỉ có tác dụng
+  khi đi kèm một response **HTTPS**, mà Cloudflare chuyển tiếp header của origin nên trình duyệt
+  nhận đủ. Đo thật 2026-10-17: chỉ trông vào toggle dashboard thì hostname frontend KHÔNG có HSTS
+  (còn hostname API có là nhờ helmet của backend — cùng giá trị này). Bật thêm ở dashboard
+  (**SSL/TLS → Edge Certificates → HSTS**) cũng được, hai tầng không xung đột.
+  `includeSubDomains` chỉ ảnh hưởng subdomain của chính `capstone.yamiannephilim.com` (không có cái
+  nào), không đụng tới `portfolio.yamiannephilim.com` của site khác trong cùng zone.
 - **Cảnh báo đã đo thật (2026-10-17)**: nếu zone Cloudflare bật **Bot Fight Mode / JavaScript
   Detections**, Cloudflare chèn thêm **một script INLINE** vào HTML (`window.__CF$cv$params` +
   `/cdn-cgi/challenge-platform/scripts/jsd/main.js`) và CSP chặt của mình sẽ chặn nó — console trình
