@@ -14,8 +14,8 @@ npm start                      # = node server.js; không có nodemon
 npm run migrate:userid         # migration một lần cho dữ liệu task cũ (xem bên dưới)
 ```
 
-- Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js:64-102](server.js#L64-L102)).
-- `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js:16-19](server.js#L16-L19)).
+- Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js](server.js)).
+- `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js](server.js)).
 - Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `REACT_APP_API_URL`, mặc định `http://localhost:8000/api` ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
 - `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`): `smtpConfig`, `mailTransport`, `password`, `rateLimit`, `userModel`. `npm run format` chạy Prettier (cấu hình ở `.prettierrc`, dùng chung quy ước với frontend). Test end-to-end thật nằm ở [../e2e](../e2e/README.md). Đóng gói và deploy: [../infra/README.md](../infra/README.md) (image dựng từ `backend/Dockerfile`, không cần Docker trên máy — build trong VM hoặc trên CI).
 
@@ -25,7 +25,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 
 - **Không có cả `SMTP_HOST` lẫn cặp `GMAIL_*` thì không mail nào gửi được.** Gửi mail là fire-and-forget — lỗi chỉ đi vào `logger` (không còn `console.log`), và `forgotPassword` cố ý không để lỗi lộ ra response (để không dò được email). Hệ quả: API trả 200 kèm thông báo "đã gửi link" trong khi thực tế không có mail nào tới. `server.js` cảnh báo lúc khởi động khi thiếu hai biến này; muốn chức năng quên mật khẩu chạy thật thì phải điền Gmail App Password.
 - `FRONTEND_URL` là gốc frontend dùng để dựng link reset trong email.
-- `TRUST_PROXY=1` chỉ đặt khi chạy sau reverse proxy (nginx/Caddy). **Đặt sai lúc không có proxy sẽ cho phép client giả `X-Forwarded-For` và vượt rate limit** ([server.js:31-34](server.js#L31-L34)); không đặt khi có proxy thì mọi request dùng chung một bucket. Đổi giá trị này phải khởi động lại server.
+- `TRUST_PROXY=1` chỉ đặt khi chạy sau reverse proxy (nginx/Caddy). **Đặt sai lúc không có proxy sẽ cho phép client giả `X-Forwarded-For` và vượt rate limit** ([server.js](server.js)); không đặt khi có proxy thì mọi request dùng chung một bucket. Đổi giá trị này phải khởi động lại server.
 
 ## Kiến trúc
 
@@ -41,14 +41,14 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 ### Xác thực
 
 - JWT payload **`{id, tokenVersion}`**, hạn 3 ngày, secret `JWT_SECRET`. Vì payload là `{id}`, controller phải dùng **`req.user.id`**, không phải `req.user._id`.
-- `requireAuth` lấy token bằng `authorization.split(' ')[1]`, verify chữ ký, rồi **đọc user từ DB** để so `user.tokenVersion === decoded.tokenVersion` ([middleware/requireAuth.js:14-16](middleware/requireAuth.js#L14-L16)). Vì vậy nó là middleware **async có truy vấn DB**, không còn thuần stateless.
+- `requireAuth` lấy token bằng `authorization.split(' ')[1]`, verify chữ ký, rồi **đọc user từ DB** để so `user.tokenVersion === decoded.tokenVersion` ([middleware/requireAuth.js](middleware/requireAuth.js)). Vì vậy nó là middleware **async có truy vấn DB**, không còn thuần stateless.
 - Mọi lỗi xác thực đều trả **401** với cùng một thông báo; không trả `error.message` để khỏi lộ chi tiết nội bộ.
 - Token cũ không có `tokenVersion` sẽ bị từ chối — đổi cơ chế này làm toàn bộ người dùng phải đăng nhập lại.
 - Mật khẩu hash bcrypt salt 10.
 
 ### Vòng đời reset password
 
-`forgotPassword` sinh token thô 20 byte, **chỉ gửi token thô trong email**; DB lưu **SHA-256** của nó kèm `resetTokenExpiry` 15 phút ([models/userModel.js:8-9](models/userModel.js#L8-L9)). Hệ quả khi sửa:
+`forgotPassword` sinh token thô 20 byte, **chỉ gửi token thô trong email**; DB lưu **SHA-256** của nó kèm `resetTokenExpiry` 15 phút ([models/userModel.js](models/userModel.js)). Hệ quả khi sửa:
 
 - `resetToken` trong DB là hash — đọc được collection cũng không dùng được token.
 - `resetPassword` tra `{resetToken: sha256(token), resetTokenExpiry: {$gt: new Date()}}` bằng **`findOneAndUpdate`** — phải giữ nguyên tác nguyên tử này, vì `findOne` rồi `save` sẽ cho hai request song song cùng token cùng qua và cùng ghi, phá vỡ tính dùng-một-lần. Token hết hạn hoặc token cũ (không có `resetTokenExpiry`) đều bị loại. Hằng số hạn ở `RESET_TOKEN_TTL_MS` đầu [forgotPasswordController.js](controllers/forgotPasswordController.js).
@@ -116,7 +116,7 @@ Object `user` trong mọi response đều đi qua whitelist `toSafeUser` ở [us
 
 - CORS chỉ cho các origin trong `CORS_ORIGIN` (phân tách bằng dấu phẩy; mặc định `http://localhost:3000,https://todo-app-b96a5.web.app`). Origin lạ bị từ chối bằng cách không gắn header CORS — cố ý không ném Error để khỏi sinh lỗi 500 vô nghĩa trong log.
 - `helmet()` đặt các header phòng thủ; `express.json()` thay cho `body-parser`.
-- Link reset dựng từ `FRONTEND_URL`, `from` của mail lấy từ `GMAIL_USERNAME`; cả hai vẫn còn giá trị dự phòng hardcode khi thiếu env (`https://todo-app-b96a5.web.app` và `alok.yadav6000@gmail.com` — [forgotPasswordController.js:17,63](controllers/forgotPasswordController.js#L17), [mailService.js:9](services/mailService.js#L9)).
+- Link reset dựng từ `FRONTEND_URL`, `from` của mail lấy từ `GMAIL_USERNAME`; cả hai vẫn còn giá trị dự phòng hardcode khi thiếu env (`https://todo-app-b96a5.web.app` và `alok.yadav6000@gmail.com` — [forgotPasswordController.js](controllers/forgotPasswordController.js), [mailService.js](services/mailService.js)).
 - Mail nằm ở [services/mailService.js](services/mailService.js): `getTransporter()` dùng lại một transporter theo cấu hình (mail reset trong [forgotPasswordController.js](controllers/forgotPasswordController.js) cũng gọi hàm này, không tự dựng transporter riêng), `sendTaskAddedMail` tự bỏ qua khi thiếu credentials thay vì ném lỗi.
 - Mật khẩu tối thiểu **8 ký tự** (`MIN_PASSWORD_LENGTH`), kiểm ở cả `registerUser` và `resetPassword`.
 - Log đi qua [utils/logger.js](utils/logger.js) — có mức `error|warn|info|debug`, đặt bằng `LOG_LEVEL`, kèm timestamp và tách stderr. Đừng gọi `console.*` trực tiếp trong mã chạy. Logger đọc `LOG_LEVEL` **lúc gọi** chứ không lúc import, vì `dotenv.config()` chạy sau khi các module đã được nạp.
