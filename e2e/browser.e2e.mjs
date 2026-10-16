@@ -62,6 +62,48 @@ try {
             { timeout }, needle)
     const hasText = async (needle) => (await text()).toLowerCase().includes(needle.toLowerCase())
 
+    // Sau khi chuyển trang phía client (đăng xuất) KHÔNG có bước chờ mạng như
+    // page.goto(..., {waitUntil:'networkidle0'}), nên ảnh và font của trang mới có
+    // thể về muộn và làm bố cục nhảy ngay đúng lúc đang thao tác. Chờ chúng xong đã.
+    const choTrangOnDinh = () => page.evaluate(async () => {
+        await document.fonts.ready
+        await Promise.all([...document.images].map((img) => img.complete
+            ? Promise.resolve()
+            : new Promise((done) => {
+                img.addEventListener('load', done, { once: true })
+                img.addEventListener('error', done, { once: true })
+            })))
+    })
+
+    // ------------------------------------------------- bố cục trang đăng nhập
+    // *** Khẳng định bắt lỗi CI đỏ ngày 2026-10-16 ***
+    // Ảnh minh hoạ của trang đăng nhập lấy từ mdbcdn.b-cdn.net (gốc 800x534, hiển
+    // thị cao 376px ở khung nhìn 800x600). Không đặt trước kích thước thì lúc ảnh
+    // CHƯA về ô ảnh cao 0px và cả biểu mẫu nằm cao hơn 376px so với lúc ảnh đã về;
+    // đúng cú nhảy đó đẩy nút LOGIN từ y=230 xuống y=606 — ra ngoài khung nhìn, 0px
+    // nhìn thấy. page.click chạy scrollIntoViewIfNeeded TRƯỚC rồi mới tới
+    // clickablePoint, nên ảnh về đúng giữa hai bước là click trượt với thông báo
+    // "Node is either not clickable or not an Element" — ba lần CI đỏ liên tiếp vì
+    // đúng lý do này (ảnh tải từ mạng ngoài nên lúc nhanh lúc chậm).
+    // Cách kiểm: giữ request của ảnh lại (không trả lời) để đo bố cục lúc ảnh CHƯA về.
+    const GIU_ANH = []
+    let giamAnh = true
+    const chanAnh = (req) => {
+        if (giamAnh && req.url().includes('mdbcdn.b-cdn.net')) GIU_ANH.push(req)
+        else req.continue().catch(() => { /* request đã bị huỷ */ })
+    }
+    await page.setRequestInterception(true)
+    page.on('request', chanAnh)
+    await page.goto(WEB + '/login', { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('#emailInput')
+    const caoOAanh = await page.$eval('.login-container img', (el) => Math.round(el.getBoundingClientRect().height))
+    record('*** ô ảnh minh hoạ giữ chỗ trước khi ảnh về (không thì bố cục nhảy 376px, nút LOGIN rơi khỏi khung nhìn)',
+        caoOAanh > 0, `cao ô ảnh lúc ảnh chưa về = ${caoOAanh}px`)
+    giamAnh = false
+    GIU_ANH.forEach((req) => req.continue().catch(() => { /* đã huỷ */ }))
+    page.off('request', chanAnh)
+    await page.setRequestInterception(false)
+
     // ------------------------------------------------------------- đăng ký
     await page.goto(WEB + '/register', { waitUntil: 'networkidle0' })
     await page.waitForSelector('#nameInput')
@@ -118,6 +160,7 @@ try {
     // ------------------------------------------------------------- đăng xuất
     await page.click('button.logout')
     await page.waitForSelector('#emailInput', { timeout: 15000 })
+    await choTrangOnDinh()
     record('đăng xuất -> quay về trang đăng nhập', true)
 
     const tokenAfterLogout = await page.evaluate(() => localStorage.getItem('authToken'))

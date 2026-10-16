@@ -45,9 +45,18 @@ function Login() {
         <div className="px-6 h-full text-gray-800">
           <div className="flex xl:justify-center lg:justify-between justify-center items-center flex-wrap h-full g-6">
             <div className="grow-0 shrink-1 md:shrink-0 basis-auto xl:w-6/12 lg:w-6/12 md:w-9/12 mb-12 md:mb-0">
+              {/* width/height khai đúng tỉ lệ gốc của ảnh (800x534) để trình duyệt
+                  GIỮ CHỖ cho nó trước khi tải xong; `h-auto` để chiều cao suy ra
+                  từ tỉ lệ đó chứ không cố định 534px. Thiếu hai thuộc tính này,
+                  ô ảnh cao 0px lúc đầu rồi nhảy lên 376px khi ảnh về — cả biểu
+                  mẫu bị đẩy xuống theo 376px, nút LOGIN rơi khỏi khung nhìn
+                  800x600 (y=230 -> y=606) làm test e2e click trượt; đó là lỗi
+                  thật đã làm CI đỏ ngày 2026-10-16. */}
               <img
                 src="https://mdbcdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.webp"
-                className="w-full"
+                width="800"
+                height="534"
+                className="w-full h-auto"
                 alt="Illustration of a person signing in to a task list"
               />
             </div>
