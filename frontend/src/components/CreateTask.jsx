@@ -54,6 +54,9 @@ function CreateTask() {
           </div>
           <div className="my-3">
             <label htmlFor="description">Description</label>
+            {/* `resize-none` (Tailwind) thay cho style={{ resize: "none" }} trước đây:
+                style inline là thuộc tính, mà CSP của nginx đặt style-src 'self' nên
+                thuộc tính inline bị chặn — dùng class thì CSP không phải nới. */}
             <textarea
               rows={5}
               name="description"
@@ -61,8 +64,7 @@ function CreateTask() {
               value={description}
               required
               onChange={(e) => setDescription(e.target.value)}
-              style={{ resize: "none" }}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 resize-none"
             />
           </div>
           <div className="flex justify-center">

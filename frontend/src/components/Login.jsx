@@ -6,6 +6,7 @@ import { login } from "../api/authApi";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { saveToken } from "../utils/authStorage";
 import { AUTH_ACTIONS } from "../constants";
+import loginIllustration from "../assets/login-illustration.webp";
 
 function Login() {
   const [formData, setFormData] = useState({});
@@ -53,7 +54,7 @@ function Login() {
                   800x600 (y=230 -> y=606) làm test e2e click trượt; đó là lỗi
                   thật đã làm CI đỏ ngày 2026-10-16. */}
               <img
-                src="https://mdbcdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.webp"
+                src={loginIllustration}
                 width="800"
                 height="534"
                 className="w-full h-auto"

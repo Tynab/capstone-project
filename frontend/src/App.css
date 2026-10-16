@@ -1,4 +1,31 @@
-@import url("https://fonts.googleapis.com/css2?family=Poppins&display=swap");
+/* Font Poppins TỰ HOST (trước đây @import từ fonts.googleapis.com).
+   Lý do đổi: (1) bỏ hẳn phụ thuộc CDN ngoài — trang không còn chờ mạng bên thứ ba và
+   không còn ca "CDN chết thì mất font"; (2) nhờ không còn nguồn ngoài, CSP của nginx
+   mới đặt được ở mức chặt default-src 'self'.
+   Chỉ tải subset latin (đủ cho giao diện tiếng Anh) ở 3 mức đậm dùng trong app —
+   3 file ~8KB, nhẹ hơn nhiều so với việc tải cả họ font. Giấy phép Poppins: OFL. */
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-700.woff2") format("woff2");
+}
+
 body {
   background-color: rgb(188, 214, 214);
   font-family: "Poppins", sans-serif;
