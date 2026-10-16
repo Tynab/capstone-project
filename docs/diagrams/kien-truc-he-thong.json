@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kiến trúc hệ thống — capstone-project (Docker Swarm 2 node)",
+    "output": ".archify/architecture-kien-truc-he-thong-20261016-175003/kien-truc-he-thong.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "8292c011bbe263347c2e2cf1edc2a78011b260ab"
+    },
+    "legend": {
+      "entries": {
+        "frontend": { "label": "Giao diện (nginx, Grafana)" },
+        "backend": { "label": "Dịch vụ" },
+        "database": { "label": "Lưu trữ" },
+        "cloud": { "label": "Cloud / tunnel" },
+        "security": { "label": "Quản trị" },
+        "external": { "label": "Bên ngoài" }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Người dùng",
+      "sublabel": "trình duyệt, điện thoại",
+      "pos": [20, 290],
+      "size": [100, 60]
+    },
+    {
+      "id": "edge",
+      "type": "cloud",
+      "label": "Cloudflare edge",
+      "sublabel": "TLS + DNS yamiannephilim.com",
+      "pos": [180, 290],
+      "size": [120, 60],
+      "sources": [
+        { "path": "infra/ansible/group_vars/all.yml", "line": 12, "end_line": 13 },
+        { "path": "infra/README.md", "line": 87 }
+      ]
+    },
+    {
+      "id": "tunnel",
+      "type": "cloud",
+      "label": "cloudflared",
+      "sublabel": "connector, chỉ mở kết nối ra",
+      "pos": [370, 290],
+      "size": [124, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 279, "end_line": 293 }
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "frontend",
+      "label": "nginx — frontend",
+      "sublabel": "SPA + proxy /api, real_ip",
+      "pos": [584, 288],
+      "size": [140, 64],
+      "sources": [
+        { "path": "frontend/nginx.conf", "line": 2 },
+        { "path": "frontend/nginx.conf", "line": 12, "end_line": 14 },
+        { "path": "frontend/nginx.conf", "line": 29, "end_line": 33 }
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "API Express ×2",
+      "sublabel": "JWT · rate limit theo IP · :8000",
+      "pos": [814, 288],
+      "size": [140, 64],
+      "sources": [
+        { "path": "backend/server.js", "line": 44, "end_line": 45 },
+        { "path": "backend/server.js", "line": 73 },
+        { "path": "backend/server.js", "line": 112, "end_line": 115 }
+      ]
+    },
+    {
+      "id": "mongo",
+      "type": "database",
+      "label": "MongoDB 6",
+      "sublabel": "bật auth · ghim node worker",
+      "pos": [1030, 288],
+      "size": [124, 64],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 29, "end_line": 44 }
+      ]
+    },
+    {
+      "id": "mailpit",
+      "type": "backend",
+      "label": "Mailpit",
+      "sublabel": "SMTP lab · mail không bền",
+      "pos": [814, 470],
+      "size": [140, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 98, "end_line": 112 }
+      ]
+    },
+    {
+      "id": "exporter",
+      "type": "backend",
+      "label": "Exporters ×4",
+      "sublabel": "node · cAdvisor · mongo · blackbox",
+      "pos": [370, 100],
+      "size": [140, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 164, "end_line": 224 },
+        { "path": "infra/stack/prometheus.yml", "line": 7, "end_line": 27 }
+      ]
+    },
+    {
+      "id": "prometheus",
+      "type": "backend",
+      "label": "Prometheus v2.53",
+      "sublabel": "7 target · giữ 15 ngày",
+      "pos": [690, 100],
+      "size": [130, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 113, "end_line": 133 },
+        { "path": "infra/stack/prometheus.yml", "line": 7, "end_line": 27 }
+      ]
+    },
+    {
+      "id": "grafana",
+      "type": "frontend",
+      "label": "Grafana 11.1",
+      "sublabel": "dashboard cấp sẵn từ file",
+      "pos": [930, 100],
+      "size": [130, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 134, "end_line": 163 },
+        { "path": "infra/stack/grafana/provisioning/dashboards/dashboards.yml", "line": 1 }
+      ]
+    },
+    {
+      "id": "portainer",
+      "type": "security",
+      "label": "Portainer + agent",
+      "sublabel": "quản trị swarm · :9000 host-only",
+      "pos": [370, 520],
+      "size": [150, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 225, "end_line": 278 }
+      ]
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Runner tự host",
+      "sublabel": "GitHub Actions · trong VM manager",
+      "pos": [620, 520],
+      "size": [150, 60],
+      "sources": [
+        { "path": "infra/ansible/roles/runner/tasks/main.yml", "line": 2, "end_line": 3 },
+        { "path": ".github/workflows/ci-cd.yml", "line": 125, "end_line": 132 }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Swarm — 2 VM Vagrant (manager + worker)",
+      "wraps": ["tunnel", "nginx", "backend", "mongo", "mailpit", "exporter", "prometheus", "grafana", "portainer", "runner"],
+      "pad": 20
+    }
+  ],
+  "connections": [
+    { "from": "users", "to": "edge", "label": "HTTPS", "variant": "emphasis" },
+    { "from": "edge", "to": "tunnel", "label": "tunnel" },
+    { "from": "tunnel", "to": "nginx", "label": "capstone" },
+    { "from": "tunnel", "to": "backend", "label": "capstone-api" },
+    { "from": "nginx", "to": "backend", "label": "proxy /api" },
+    { "from": "backend", "to": "mongo", "label": "đọc/ghi" },
+    { "from": "backend", "to": "mailpit", "label": "SMTP" },
+    { "from": "prometheus", "to": "exporter", "label": "scrape /metrics" },
+    { "from": "prometheus", "to": "grafana", "label": "datasource" },
+    { "from": "prometheus", "to": "backend", "label": "probe health" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Truy cập",
+      "items": [
+        "Trong lab: 80 app · 9000 Portainer · 9090 Prometheus · 3001 Grafana · 8025 Mailpit",
+        "Công khai CHỈ qua tunnel: capstone và capstone-api của yamiannephilim.com — không mở cổng vào",
+        "UFW bật trên cả 2 node; cổng 9000 giới hạn nguồn 192.168.56.0/24"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dữ liệu bền",
+      "items": [
+        "MongoDB: volume capstone_mongo_data, ghim ở node worker",
+        "prom_data · grafana_data · portainer_state giữ cấu hình qua lần deploy",
+        "Mailpit KHÔNG có volume — mail mất khi deploy lại (đã đo thật)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Vận hành",
+      "items": [
+        "Dựng và khởi động lại: infra\\setup.cmd · infra\\start.cmd (chạy trên Windows)",
+        "Ansible: common → swarm_manager → swarm_worker → app → runner",
+        "Deploy: /opt/capstone/deploy.sh --prune — phải thấy đủ replica hai lần liên tiếp mới báo xanh"
+      ]
+    }
+  ]
+}

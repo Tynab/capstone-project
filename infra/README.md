@@ -29,6 +29,12 @@ Truy cập từ máy bạn: **80** app · **9000** Portainer · **9090** Prometh
 
 Stack có **13 service** khi bật tunnel, **12** khi không (xem mục Cloudflare Tunnel).
 
+Sơ đồ tương tác (bấm vào từng node để đọc chi tiết): [kiến trúc hệ thống](../docs/diagrams/kien-truc-he-thong.html) ·
+[quy trình giao hàng](../docs/diagrams/quy-trinh-giao-hang.html) ·
+[luồng dữ liệu](../docs/diagrams/luong-du-lieu.html) ·
+[chuỗi gọi API](../docs/diagrams/chuoi-goi-api.html) ·
+[vòng đời tài khoản](../docs/diagrams/vong-doi-tai-khoan.html) — danh mục và cách vẽ lại: [docs/diagrams/](../docs/diagrams/README.md).
+
 **Vì sao Ansible chạy trong VM manager chứ không trên Windows:** Ansible không chạy
 native trên Windows; phương án WSL2 thêm một dependency lớn. Dùng provisioner
 `ansible_local` của Vagrant thì manager vừa là control node vừa là node đầu tiên,

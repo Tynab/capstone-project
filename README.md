@@ -51,7 +51,20 @@ Công khai qua **Cloudflare Tunnel** (bật/gỡ bằng một biến trong `infr
 | [.github/workflows/](.github/workflows/) | GitHub Actions | Pipeline test → build → deploy |
 | Cloudflare Tunnel | cloudflared chạy trong stack | Đưa app/API ra domain thật mà không mở cổng vào, không cần IP công khai |
 | Portainer | portainer-ce + agent (`mode: global`) | Quản trị swarm trên UI, xem container/volume/image của cả 2 node |
-| [docs/](docs/) | — | Đặc tả thiết kế và kế hoạch thi công của phần hạ tầng |
+| [docs/](docs/) | — | Đặc tả thiết kế, kế hoạch thi công và [sơ đồ hệ thống](docs/diagrams/README.md) |
+
+## Sơ đồ hệ thống
+
+5 sơ đồ tương tác vẽ bằng archify — mở file HTML là xem được, không cần cài gì (bấm vào node để đọc
+chi tiết). Nguồn JSON và cách vẽ lại: [docs/diagrams/README.md](docs/diagrams/README.md).
+
+| Sơ đồ | Nội dung |
+|---|---|
+| [Kiến trúc hệ thống](docs/diagrams/kien-truc-he-thong.html) | 13 service, 2 VM swarm, 3 loại mạng, Cloudflare tunnel, Portainer + agent |
+| [Quy trình giao hàng mã nguồn](docs/diagrams/quy-trinh-giao-hang.html) | CICD và IaC trên 5 làn, kèm nhánh rollback |
+| [Luồng dữ liệu](docs/diagrams/luong-du-lieu.html) | Dữ liệu đi đâu và lưu ở đâu: app · mail · giám sát |
+| [Chuỗi gọi API](docs/diagrams/chuoi-goi-api.html) | Cả 10 endpoint qua đúng đường thật, kèm rate limit và JWT |
+| [Vòng đời tài khoản](docs/diagrams/vong-doi-tai-khoan.html) | Đăng ký → phiên → quên mật khẩu, kèm nhánh hết hạn |
 
 ## Bắt đầu nhanh
 

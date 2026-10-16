@@ -1,0 +1,184 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Quy trình giao hàng mã nguồn — CICD + IaC (capstone-project)",
+    "output": ".archify/workflow-giao-hang-ma-nguon-20261016-175003/quy-trinh-giao-hang.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "8292c011bbe263347c2e2cf1edc2a78011b260ab"
+    },
+    "legend": {
+      "entries": {
+        "backend": { "label": "Chạy trong cụm / VM" },
+        "cloud": { "label": "Hệ thống ngoài (GitHub)" },
+        "security": { "label": "Cổng chặn & khôi phục" },
+        "external": { "label": "Máy dev" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "iac", "label": "Dựng cụm bằng IaC (một lần)" },
+    { "id": "dev", "label": "Máy dev (Windows)" },
+    { "id": "github", "label": "GitHub: Actions + GHCR" },
+    { "id": "manager", "label": "VM manager: runner + deploy" },
+    { "id": "runtime", "label": "Cụm Docker Swarm" }
+  ],
+  "mainPath": ["commit", "test", "build", "deployjob", "deploysh", "live"],
+  "nodes": [
+    {
+      "id": "setup",
+      "lane": "iac",
+      "col": 0,
+      "type": "external",
+      "label": "setup.cmd",
+      "sublabel": "kiểm công cụ, firewall, khoá lab",
+      "sources": [
+        { "path": "infra/setup.cmd", "line": 1 },
+        { "path": "infra/setup.ps1", "line": 50, "end_line": 68 },
+        { "path": "infra/start.ps1", "line": 1 }
+      ]
+    },
+    {
+      "id": "vagrant",
+      "lane": "iac",
+      "col": 1,
+      "type": "external",
+      "label": "vagrant up",
+      "sublabel": "2 VM + mạng host-only",
+      "sources": [
+        { "path": "infra/Vagrantfile", "line": 25, "end_line": 51 }
+      ]
+    },
+    {
+      "id": "ansible",
+      "lane": "iac",
+      "col": 2,
+      "type": "backend",
+      "label": "Ansible — 5 role",
+      "sublabel": "common → swarm → app → runner",
+      "sources": [
+        { "path": "infra/ansible/site.yml", "line": 3, "end_line": 32 }
+      ]
+    },
+    {
+      "id": "commit",
+      "lane": "dev",
+      "col": 0,
+      "type": "external",
+      "label": "git push main",
+      "sublabel": "mỗi commit một tag sha",
+      "sources": [
+        { "path": ".github/workflows/ci-cd.yml", "line": 4 }
+      ]
+    },
+    {
+      "id": "test",
+      "lane": "github",
+      "col": 1,
+      "type": "cloud",
+      "label": "Job test",
+      "sublabel": "unit + e2e API + Chrome",
+      "sources": [
+        { "path": ".github/workflows/ci-cd.yml", "line": 24, "end_line": 66 }
+      ]
+    },
+    {
+      "id": "build",
+      "lane": "github",
+      "col": 2,
+      "type": "cloud",
+      "label": "Job build → GHCR",
+      "sublabel": "sha-xxxx + latest",
+      "sources": [
+        { "path": ".github/workflows/ci-cd.yml", "line": 67, "end_line": 124 }
+      ]
+    },
+    {
+      "id": "deployjob",
+      "lane": "manager",
+      "col": 3,
+      "type": "backend",
+      "label": "Job deploy",
+      "sublabel": "runner tự host trong VM",
+      "sources": [
+        { "path": ".github/workflows/ci-cd.yml", "line": 125, "end_line": 142 },
+        { "path": "infra/ansible/roles/runner/tasks/main.yml", "line": 2, "end_line": 3 }
+      ]
+    },
+    {
+      "id": "deploysh",
+      "lane": "manager",
+      "col": 4,
+      "type": "backend",
+      "label": "deploy.sh",
+      "sublabel": "--prune, hội tụ, healthcheck",
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/deploy.sh.j2", "line": 29, "end_line": 47 },
+        { "path": "infra/ansible/roles/app/templates/deploy.sh.j2", "line": 78, "end_line": 86 }
+      ]
+    },
+    {
+      "id": "live",
+      "lane": "runtime",
+      "col": 5,
+      "type": "backend",
+      "label": "13 service chạy",
+      "sublabel": "swarm giữ đủ replica",
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2", "line": 68, "end_line": 72 }
+      ]
+    },
+    {
+      "id": "rollback",
+      "lane": "manager",
+      "col": 5,
+      "type": "security",
+      "label": "Rollback",
+      "sublabel": "swarm tự về bản cũ",
+      "sources": [
+        { "path": "infra/ansible/roles/app/templates/deploy.sh.j2", "line": 68, "end_line": 76 },
+        { "path": ".github/workflows/ci-cd.yml", "line": 144, "end_line": 154 }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "setup-vagrant", "from": "setup", "to": "vagrant" },
+    { "id": "vagrant-ansible", "from": "vagrant", "to": "ansible" },
+    { "id": "ansible-live", "from": "ansible", "to": "live", "label": "deploy lần đầu", "role": "branch" },
+    { "id": "commit-test", "from": "commit", "to": "test" },
+    { "id": "test-build", "from": "test", "to": "build" },
+    { "id": "build-deploy", "from": "build", "to": "deployjob", "label": "image", "variant": "emphasis" },
+    { "id": "deploy-sh", "from": "deployjob", "to": "deploysh" },
+    { "id": "sh-live", "from": "deploysh", "to": "live", "label": "xác minh xanh", "variant": "emphasis" },
+    { "id": "sh-rollback", "from": "deploysh", "to": "rollback", "label": "task chết", "variant": "security", "role": "error" },
+    { "id": "rollback-live", "from": "rollback", "to": "live", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Hai đường vào, một script deploy",
+      "items": [
+        "CI gọi /opt/capstone/deploy.sh <tag sha>; chạy tay cũng đúng script đó → hành vi giống nhau",
+        "Rollback tay: chạy lại workflow với tag cũ (workflow_dispatch nhận image_tag)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cổng chặn trước khi báo xanh",
+      "items": [
+        "Đủ replica HAI mẫu liên tiếp, rồi healthcheck qua nginx, rồi kiểm ảnh đang chạy đúng tag",
+        "Sai một cổng là exit 1 — đã đo thật: token tunnel sai định dạng → connector crash → deploy đỏ"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Vì sao deploy hỏng vẫn an toàn",
+      "items": [
+        "update_config: order start-first + failure_action rollback + monitor 45s",
+        "monitor phải lớn hơn start-period + interval của healthcheck — từng để 5s và swarm rollback nhầm bản tốt"
+      ]
+    }
+  ]
+}

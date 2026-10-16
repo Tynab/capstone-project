@@ -1,0 +1,186 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Vòng đời tài khoản — capstone-project (đăng ký → phiên → quên mật khẩu)",
+    "output": ".archify/lifecycle-vong-doi-tai-khoan-20261016-175003/vong-doi-tai-khoan.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "8292c011bbe263347c2e2cf1edc2a78011b260ab"
+    },
+    "legend": {
+      "entries": {
+        "start": {
+          "label": "Bắt đầu"
+        },
+        "active": {
+          "label": "Đang hoạt động"
+        },
+        "waiting": {
+          "label": "Đang chờ"
+        }
+      }
+    }
+  },
+  "mainPath": [
+    "guest",
+    "session",
+    "signedout",
+    "resetpending"
+  ],
+  "states": [
+    {
+      "id": "guest",
+      "type": "start",
+      "label": "Khách",
+      "sublabel": "chưa có tài khoản",
+      "tag": "bắt đầu",
+      "step": "01",
+      "sources": [
+        {
+          "path": "backend/controllers/userController.js",
+          "line": 64,
+          "end_line": 90
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "type": "active",
+      "label": "Đang đăng nhập",
+      "sublabel": "JWT còn hạn 3 ngày",
+      "tag": "phiên sống",
+      "step": "02",
+      "sources": [
+        {
+          "path": "backend/controllers/userController.js",
+          "line": 9,
+          "end_line": 10
+        },
+        {
+          "path": "backend/middleware/requireAuth.js",
+          "line": 11,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "signedout",
+      "type": "waiting",
+      "label": "Đã đăng xuất",
+      "sublabel": "còn tài khoản, không có token hợp lệ",
+      "tag": "chờ đăng nhập",
+      "step": "03",
+      "sources": [
+        {
+          "path": "backend/middleware/requireAuth.js",
+          "line": 7
+        },
+        {
+          "path": "backend/controllers/userController.js",
+          "line": 35
+        }
+      ]
+    },
+    {
+      "id": "resetpending",
+      "type": "waiting",
+      "label": "Đã yêu cầu reset",
+      "sublabel": "DB: SHA-256(token) + hạn 15 phút",
+      "tag": "chờ mở link",
+      "step": "04",
+      "sources": [
+        {
+          "path": "backend/controllers/forgotPasswordController.js",
+          "line": 38,
+          "end_line": 43
+        },
+        {
+          "path": "backend/models/userModel.js",
+          "line": 10,
+          "end_line": 11
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "guest-session",
+      "from": "guest",
+      "to": "session",
+      "label": "đăng ký",
+      "variant": "default"
+    },
+    {
+      "id": "session-signedout",
+      "from": "session",
+      "to": "signedout",
+      "label": "đăng xuất",
+      "variant": "default"
+    },
+    {
+      "id": "session-expired",
+      "from": "session",
+      "to": "signedout",
+      "label": "hết hạn / thu hồi",
+      "variant": "dashed"
+    },
+    {
+      "id": "signedout-session",
+      "from": "signedout",
+      "to": "session",
+      "label": "đăng nhập",
+      "variant": "emphasis"
+    },
+    {
+      "id": "signedout-reset",
+      "from": "signedout",
+      "to": "resetpending",
+      "label": "quên mật khẩu",
+      "variant": "security"
+    },
+    {
+      "id": "reset-signedout",
+      "from": "resetpending",
+      "to": "signedout",
+      "label": "đặt lại xong",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reset-expired",
+      "from": "resetpending",
+      "to": "signedout",
+      "label": "link hết hạn",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Vì sao phiên chết ngay khi đổi mật khẩu",
+      "items": [
+        "JWT hạn 3 ngày; requireAuth đọc tokenVersion từ DB mỗi request chứ không tin mỗi chữ ký",
+        "Đổi mật khẩu làm tokenVersion tăng nên mọi JWT cũ bị 401 — client tự xoá token",
+        "401 chỉ chuyển hướng khi đang ở trang cần đăng nhập, để link reset còn mở được"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Reset mật khẩu an toàn ở đâu",
+      "items": [
+        "Đăng ký: mật khẩu ≥ 8 ký tự, bcrypt cost 10, rate limit 20/giờ, email trùng trả \"User already exists\"",
+        "Đăng nhập: rate limit 10/15 phút; sai email hay sai mật khẩu đều cùng thông báo",
+        "Reset: token thô 20 byte chỉ nằm trong mail, DB giữ SHA-256 + hạn 15 phút, dùng được đúng một lần; email lạ vẫn cùng thông báo"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Trạng thái KHÔNG tồn tại trong hệ thống này",
+      "items": [
+        "Không có khoá tài khoản và không có xoá tài khoản — vượt rate limit chỉ là 429 tạm thời, không đổi trạng thái",
+        "Vì vậy đồ thị không có trạng thái kết thúc: tài khoản luôn quay về được Đã đăng xuất"
+      ]
+    }
+  ]
+}

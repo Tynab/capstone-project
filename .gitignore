@@ -51,3 +51,6 @@ desktop.ini
 .idea/
 *.swp
 *~
+
+# Thư mục làm việc tạm của archify (diagram xuất ra docs/diagrams/).
+.archify/
