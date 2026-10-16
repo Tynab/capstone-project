@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Frontend `todo-app`: Create React App 5 (`react-scripts` 5.0.1) + React 18, JavaScript thuần (không TypeScript). Gọi API backend Express ở `../backend` — đọc `../backend/CLAUDE.md` trước khi động vào phần API.
 
-Version control: repo git được khởi tạo ở **gốc dự án `../`** (không phải trong `frontend/`), kèm `.gitignore` ở gốc lo `node_modules/`, `.env`, `frontend/build/`. Lịch sử hiện chỉ có một commit `aa96208` (Initial commit, chứa `README.md` và `.gitattributes`); các hash cũ (`ff8dd63`, `713d1dd`) được nhắc trong tài liệu phiên trước không còn tồn tại trong repo này.
+Version control: repo git ở **gốc dự án `../`** (không phải trong `frontend/`), `.gitignore` ở gốc lo `node_modules/`, `.env`, `frontend/build/`.
 
 Đây là phần frontend của dự án DevOps cuối khóa (đề bài: dựng CICD GitHub Actions + hệ thống giám sát Grafana/Prometheus — cả hai đã dựng xong, xem [../infra/README.md](../infra/README.md)). Đóng gói: [Dockerfile](Dockerfile) (build CRA rồi phục vụ bằng nginx, proxy `/api` sang backend) — image được CI build và deploy lên swarm, không build tại máy Windows.
 
@@ -32,7 +32,7 @@ npm test           # jest watch mode — frontend KHÔNG có file test nào; b�
 ### Lớp gọi API — component không bao giờ gọi axios trực tiếp
 
 - [src/api/client.js](src/api/client.js): instance axios duy nhất. `baseURL` lấy từ `REACT_APP_API_URL`, mặc định `http://localhost:8000/api`.
-- **Request interceptor** tự gắn `Authorization: Bearer`. Không chỗ nào được dựng header bằng tay nữa.
+- **Request interceptor** tự gắn `Authorization: Bearer` cho mọi request. Không dựng header bằng tay ở chỗ gọi.
 - **Response interceptor cho 401**: xoá token và chuyển hướng `/login`, **trừ** 4 đường dẫn trong `PUBLIC_PATHS` (login/register/forgotPassword/resetPassword). Phải giữ nguyên danh sách này — người dùng có token cũ mở link reset trong email sẽ mất token trên query string nếu bị đá sang `/login`.
 - [src/api/authApi.js](src/api/authApi.js), [src/api/taskApi.js](src/api/taskApi.js): mọi lời gọi API đi qua đây; component không cần biết đường dẫn HTTP.
 
@@ -79,6 +79,6 @@ Lỗi luôn đọc qua [getErrorMessage](src/utils/getErrorMessage.js) — đọ
 ## Lưu ý khi deploy
 
 - `baseURL` chạy **trong trình duyệt của người dùng**, nên `localhost` ở đó là máy của họ chứ không phải máy chủ. Đặt `REACT_APP_API_URL` lúc build, hoặc tốt hơn là dùng đường dẫn tương đối `/api` + proxy qua nginx (không phải cấu hình CORS, không bị chặn mixed content khi trang chạy https).
-- `BrowserRouter` đòi web server có SPA fallback (rewrite mọi path về `index.html`), nếu không `/active`, `/resetPassword`… sẽ 404 khi F5. Repo chưa có file cấu hình hosting nào và `package.json` không có `homepage`, nên build giả định phục vụ ở gốc domain.
-- Link reset password do backend dựng từ `FRONTEND_URL` (mẫu ở `../backend/.env.example`; `backend/.env` hiện chưa đặt biến này nên đang rơi về mặc định `https://todo-app-b96a5.web.app`) — đổi nơi deploy frontend thì phải sửa cả biến đó ở backend, không chỉ sửa repo này.
+- `BrowserRouter` đòi SPA fallback (rewrite mọi path về `index.html`), nếu không `/active`, `/resetPassword`… sẽ 404 khi F5. Trong lab, [nginx.conf](nginx.conf) làm việc đó bằng `try_files`. Build giả định phục vụ ở gốc domain (`package.json` không có `homepage`).
+- Link reset password do backend dựng từ `FRONTEND_URL` (mẫu ở `../backend/.env.example`; thiếu biến thì rơi về mặc định `https://todo-app-b96a5.web.app`) — đổi nơi deploy frontend thì phải sửa cả biến đó ở backend, không chỉ sửa repo này.
 - Backend chỉ cho CORS từ các origin trong `CORS_ORIGIN` (`.env` của backend). Đổi tên miền frontend thì phải thêm vào đó.

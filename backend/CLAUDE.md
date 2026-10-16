@@ -23,7 +23,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 
 `MONGO_URI`, `JWT_SECRET`, `PORT`, `GMAIL_USERNAME`, `GMAIL_PASSWORD`, `FRONTEND_URL`, `TRUST_PROXY`, `CORS_ORIGIN`, `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS` (bỏ trống `SMTP_HOST` = dùng Gmail như cũ). Mẫu ở `.env.example`; `.env` thật đã được `.gitignore` chặn vì dự án nộp qua GitHub.
 
-- **Hai biến Gmail đang trống, nên hiện không mail nào gửi được.** Gửi mail là fire-and-forget — lỗi chỉ đi vào `logger` (không còn `console.log`), và `forgotPassword` cố ý không để lỗi lộ ra response (để không dò được email). Hệ quả: API trả 200 kèm thông báo "đã gửi link" trong khi thực tế không có mail nào tới. `server.js` cảnh báo lúc khởi động khi thiếu hai biến này; muốn chức năng quên mật khẩu chạy thật thì phải điền Gmail App Password.
+- **Không có cả `SMTP_HOST` lẫn cặp `GMAIL_*` thì không mail nào gửi được.** Gửi mail là fire-and-forget — lỗi chỉ đi vào `logger` (không còn `console.log`), và `forgotPassword` cố ý không để lỗi lộ ra response (để không dò được email). Hệ quả: API trả 200 kèm thông báo "đã gửi link" trong khi thực tế không có mail nào tới. `server.js` cảnh báo lúc khởi động khi thiếu hai biến này; muốn chức năng quên mật khẩu chạy thật thì phải điền Gmail App Password.
 - `FRONTEND_URL` là gốc frontend dùng để dựng link reset trong email.
 - `TRUST_PROXY=1` chỉ đặt khi chạy sau reverse proxy (nginx/Caddy). **Đặt sai lúc không có proxy sẽ cho phép client giả `X-Forwarded-For` và vượt rate limit** ([server.js:31-34](server.js#L31-L34)); không đặt khi có proxy thì mọi request dùng chung một bucket. Đổi giá trị này phải khởi động lại server.
 
@@ -66,7 +66,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 
 `middleware/rateLimit.js` là cửa sổ cố định, lưu trong `Map` của tiến trình. Khoá là `limiterId:req.ip`, trong đó **`limiterId` sinh tự động cho mỗi lần gọi `rateLimit()`**, không phải URL.
 
-- **Không được đưa URL vào khoá.** Bản đầu dùng `req.originalUrl`, nhưng biến này giữ cả query string, nên chỉ cần thêm `?x=1` vào mỗi request là mỗi lần một bucket mới — giới hạn không bao giờ chạm tới. Lỗi này đã từng xảy ra thật, đừng lặp lại.
+- **Không được đưa URL vào khoá.** `req.originalUrl` giữ cả query string, nên thêm `?x=1` vào mỗi request là mỗi lần một bucket mới và giới hạn không bao giờ chạm tới.
 - `Map` có trần `MAX_BUCKETS`: chạm trần thì xoá bucket hết hạn trước, sau đó xoá dần bucket cũ nhất.
 - Chỉ đúng cho **một instance**. Chạy nhiều container thì mỗi instance đếm riêng, giới hạn thực tế nhân theo số instance — muốn chính xác phải thay bằng store dùng chung (Redis).
 - Bộ đếm mất khi restart, và không reset khi đăng nhập thành công.
@@ -80,7 +80,7 @@ Cần thiết vì sau khi đổi mật khẩu (hoặc token hết hạn), `requi
 
 `PUBLIC_PATHS` trong file đó liệt kê các trang được miễn chuyển hướng. **Đừng rút ngắn danh sách này**: người dùng còn token cũ mở link reset trong email sẽ bị `App.js` gọi `getUser` → 401 → đá sang `/login` trước khi form kịp hiện, làm mất token nằm trên query string.
 
-**Địa chỉ backend phải khớp nhau khi deploy.** Frontend đọc `REACT_APP_API_URL` (CRA nhúng biến `REACT_APP_*` vào bundle **lúc build**, nên đổi giá trị phải build lại), backend dựng link reset từ `FRONTEND_URL`. Bản đầu để cứng `http://localhost:8000/api` phía frontend và `https://todo-app-b96a5.web.app` phía backend — bản deploy khi đó gọi vào chính máy người dùng nên luồng reset không bao giờ tới backend. Sửa một trong hai mà quên cái kia sẽ tái hiện đúng lỗi này.
+**Địa chỉ backend phải khớp nhau khi deploy.** Frontend đọc `REACT_APP_API_URL` (CRA nhúng biến `REACT_APP_*` vào bundle **lúc build**, nên đổi giá trị phải build lại), backend dựng link reset từ `FRONTEND_URL`. Sửa một trong hai mà quên cái kia thì link reset trỏ vào máy người dùng và luồng reset không bao giờ tới backend.
 
 ### Chống NoSQL operator injection — không được gỡ các guard này
 
@@ -106,7 +106,7 @@ Object `user` trong mọi response đều đi qua whitelist `toSafeUser` ở [us
 ### Quy ước route dễ nhầm
 
 - `POST /addTask` trả **201** kèm `task` vừa tạo (có `_id`, `createdAt`) — client dùng luôn object đó thay vì tự dựng task ở phía nó. Đổi shape này thì phải sửa `../frontend/src/api/taskApi.js`.
-- `DELETE /removeTask/:id` và `PATCH /updateTask/:id` đọc id từ **`req.params`**. Bản đầu là `GET /removeTask` đọc `req.body.id` — trình duyệt không gửi body kèm GET nên id luôn `undefined` và endpoint không bao giờ chạy được. Đừng quay lại kiểu đó, và cũng đừng để hành động xoá nằm sau GET.
+- `DELETE /removeTask/:id` và `PATCH /updateTask/:id` đọc id từ **`req.params`**. Không để hành động xoá nằm sau GET: trình duyệt không gửi body kèm GET nên id sẽ luôn `undefined`.
 - Cả hai dùng `findOneAndDelete`/`findOneAndUpdate` với `{_id, userId: req.user.id}` — chỉ thao tác được trên task của chính mình, trả 404 khi không khớp (không phân biệt "không tồn tại" với "của người khác"). Có guard `mongoose.Types.ObjectId.isValid(id)` trước truy vấn để không lộ CastError.
 - `PATCH /updateTask/:id` chỉ nhận `completed` kiểu boolean; giá trị khác trả 400.
 - Route tên `"/getuser"` còn frontend gọi `"/user/getUser"`; khớp được vì Express mặc định không phân biệt hoa/thường — đã có test runtime ở [../e2e/api.e2e.mjs](../e2e/api.e2e.mjs).
@@ -117,10 +117,9 @@ Object `user` trong mọi response đều đi qua whitelist `toSafeUser` ở [us
 - CORS chỉ cho các origin trong `CORS_ORIGIN` (phân tách bằng dấu phẩy; mặc định `http://localhost:3000,https://todo-app-b96a5.web.app`). Origin lạ bị từ chối bằng cách không gắn header CORS — cố ý không ném Error để khỏi sinh lỗi 500 vô nghĩa trong log.
 - `helmet()` đặt các header phòng thủ; `express.json()` thay cho `body-parser`.
 - Link reset dựng từ `FRONTEND_URL`, `from` của mail lấy từ `GMAIL_USERNAME`; cả hai vẫn còn giá trị dự phòng hardcode khi thiếu env (`https://todo-app-b96a5.web.app` và `alok.yadav6000@gmail.com` — [forgotPasswordController.js:17,63](controllers/forgotPasswordController.js#L17), [mailService.js:9](services/mailService.js#L9)).
-- Mail "Task Added" nằm ở [services/mailService.js](services/mailService.js) (`sendTaskAddedMail`) và `taskController` không tự tạo transporter nữa; **mail reset thật vẫn dựng transporter ngay trong controller** ([forgotPasswordController.js:45](controllers/forgotPasswordController.js#L45)). Hàm này tự bỏ qua khi thiếu credentials thay vì ném lỗi.
+- Mail nằm ở [services/mailService.js](services/mailService.js): `getTransporter()` dùng lại một transporter theo cấu hình (mail reset trong [forgotPasswordController.js](controllers/forgotPasswordController.js) cũng gọi hàm này, không tự dựng transporter riêng), `sendTaskAddedMail` tự bỏ qua khi thiếu credentials thay vì ném lỗi.
 - Mật khẩu tối thiểu **8 ký tự** (`MIN_PASSWORD_LENGTH`), kiểm ở cả `registerUser` và `resetPassword`.
 - Log đi qua [utils/logger.js](utils/logger.js) — có mức `error|warn|info|debug`, đặt bằng `LOG_LEVEL`, kèm timestamp và tách stderr. Đừng gọi `console.*` trực tiếp trong mã chạy. Logger đọc `LOG_LEVEL` **lúc gọi** chứ không lúc import, vì `dotenv.config()` chạy sau khi các module đã được nạp.
-- Hai dependency `body-parser` và `crypto` đã được gỡ khỏi `package.json`; thư mục `scheduler/` (rỗng, không được import) đã xoá.
 - **Server chỉ mở cổng sau khi kết nối được DB**: `mount route` và `app.listen` nằm trong callback của `mongoose.connect`, DB không tới được thì thoát mã 1 để Docker khởi động lại. Callback đó chỉ chạy sau `serverSelectionTimeoutMS` (mặc định 30s) — đừng hạ thấp, vì trong docker-compose container API thường lên trước khi Mongo sẵn sàng.
 - Script một lần nằm ở [scripts/](scripts/); chúng dùng `console.*` trực tiếp vì là công cụ dòng lệnh, không phải mã chạy trong server.
-- Backend không có unit test riêng; kiểm chứng end-to-end bằng bộ test ở [../e2e](../e2e/README.md) (`npm run test:api`, `npm run test:browser`) — bộ test tự dựng `mongod` thật qua `mongodb-memory-server` nên không cần cài MongoDB sẵn.
+- Kiểm chứng end-to-end bằng bộ test ở [../e2e](../e2e/README.md) (`npm run test:api`, `npm run test:browser`) — tự dựng `mongod` thật qua `mongodb-memory-server`, không cần cài MongoDB sẵn.

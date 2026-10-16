@@ -21,8 +21,6 @@ Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.gi
 
 Hai file CLAUDE.md ở thư mục con là bản chi tiết (kiến trúc, guard bảo mật, các lỗi đã từng xảy ra thật) — **đọc file tương ứng trước khi sửa `backend/` hoặc `frontend/`**. File ở gốc này chỉ chứa thứ liên quan nhiều phần cùng lúc.
 
-Không còn tài liệu nợ review: toàn bộ phát hiện của các vòng review trước (A/B/C và backlog 15 mục) đã được xử lý và kiểm chứng, nên hai file `CODE_REVIEW_BACKLOG.md` và `frontend/CODE_REVIEW_CHECKLIST.md` đã được xoá. Lịch sử nằm trong git; các quy ước còn hiệu lực thì ở lại trong manifest này và manifest thư mục con.
-
 Quy ước tài liệu: manifest duy nhất là `CLAUDE.md` (kể cả bản trong thư mục con). Không tạo `AGENTS.md` hay `.clinerules/`.
 
 ## Lệnh
@@ -39,7 +37,7 @@ npm run migrate:userid     # migration một lần cho task cũ có userId kiể
 ```
 
 - Cần `.env` (mẫu ở [backend/.env.example](backend/.env.example)). Thiếu `JWT_SECRET` thì server `process.exit(1)` ngay; không kết nối được MongoDB thì **không mở cổng** và thoát mã 1 — muốn chạy được phải có `MONGO_URI` trỏ tới Mongo thật.
-- `npm test` là placeholder `exit 1`. Backend không có test, không có ESLint, không có Prettier config (chỉ frontend có `.prettierrc`).
+- `npm test` chạy unit test bằng `node --test`; `npm run format` chạy Prettier (`.prettierrc` có ở cả hai phần). Backend không có ESLint.
 
 ### Frontend — [frontend/](frontend/)
 
@@ -69,7 +67,7 @@ npm run test:browser       # 13 khẳng định qua Chrome thật (cần Chrome/
 
 ## Bốn biến môi trường phải khớp nhau
 
-Đây là nguồn lỗi deploy đã từng xảy ra thật (bản deploy cũ để cứng `localhost` ở frontend và một domain Firebase đã chết ở backend, nên luồng reset password không bao giờ tới được backend). Khi đổi nơi chạy, phải sửa **đồng thời**:
+Khi đổi nơi chạy, phải sửa **đồng thời** bốn biến sau — lệch một biến là luồng đăng nhập hoặc reset password hỏng:
 
 | Biến | Ở đâu | Ghi chú |
 |---|---|---|
@@ -80,7 +78,7 @@ npm run test:browser       # 13 khẳng định qua Chrome thật (cần Chrome/
 
 Giá trị `baseURL` chạy **trong trình duyệt người dùng**, nên `localhost` ở đó là máy của họ. Khi đóng gói Docker, cách ít lỗi nhất là dùng đường dẫn tương đối `/api` + reverse proxy (nginx) sang backend — không phải cấu hình CORS, không bị chặn mixed content khi trang chạy https ([frontend/CLAUDE.md](frontend/CLAUDE.md) có ghi chú chi tiết).
 
-Hai biến `GMAIL_USERNAME` / `GMAIL_PASSWORD` đang trống: `/forgotPassword` vẫn trả 200 kèm "đã gửi link" nhưng **không có mail nào được gửi**.
+Nếu thiếu cả `SMTP_HOST` lẫn cặp `GMAIL_*` thì `/forgotPassword` vẫn trả 200 kèm "đã gửi link" nhưng **không có mail nào được gửi**. Trong lab, Ansible đặt `SMTP_HOST=mailpit` nên mail có gửi thật.
 
 ## Hợp đồng API giữa hai phần
 
@@ -98,7 +96,7 @@ Mọi response là object JSON: `message` cho người đọc, key theo tài ngu
 
 ## Kiểm chứng trước khi báo xong
 
-Không có unit test nào, và backend không có linter (frontend chỉ có ESLint mặc định của CRA chạy kèm `start`/`build`) — không có lưới nào tự chặn lỗi. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
+Unit test của backend (`npm test`) chỉ phủ các hàm thuần; frontend không có test, và linter duy nhất là ESLint mặc định của CRA chạy kèm `start`/`build` — không đủ lưới để chặn lỗi tích hợp. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
 
 1. Sửa backend hoặc hợp đồng API → `cd e2e && npm run test:api`.
 2. Đụng vào UI/state/reducer → thêm cả `npm run test:browser`; test API xanh không chứng minh app không trắng màn hình (đã từng có đúng tình huống đó).
