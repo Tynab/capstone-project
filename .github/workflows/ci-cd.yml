@@ -53,6 +53,12 @@ jobs:
       - name: Unit test backend
         run: npm --prefix backend test
 
+      # Jest của CRA mặc định ở watch mode (treo CI mãi); CI=true bắt chạy một
+      # lần rồi thoát, exit 0 khi xanh. Bộ test chốt reducer, lớp api và luồng
+      # đăng nhập/thêm task ở tầng component — không cần server thật.
+      - name: Unit test frontend
+        run: CI=true npm --prefix frontend test
+
       - name: Chạy e2e tầng API
         run: npm --prefix e2e run test:api
 
