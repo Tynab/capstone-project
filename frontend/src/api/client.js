@@ -23,6 +23,17 @@ instance.interceptors.request.use((config) => {
   return config;
 });
 
+// Cơ chế đồng bộ state với localStorage khi có 401: App.jsx đăng ký handler duy
+// nhất lúc mount và bỏ đăng ký khi unmount. Chỉ xoá token khỏi localStorage thôi
+// thì userToken/user trong React vẫn còn — Header hiện trạng thái "đã đăng nhập"
+// ảo cho tới khi F5 (lỗi đã từng xảy ra thật khi người dùng có token cũ mở link
+// reset trong email). Handler được gọi ở MỌI ca 401, kể cả trang công khai; chỉ
+// riêng việc chuyển hướng mới phân biệt theo PUBLIC_PATHS bên dưới.
+let unauthorizedHandler = null;
+export const setUnauthorizedHandler = (fn) => {
+  unauthorizedHandler = fn;
+};
+
 // Các trang không cần đăng nhập. Phải loại trừ chúng khỏi việc chuyển hướng:
 // người dùng có token cũ mở link reset trong email (/resetPassword?token=...)
 // sẽ bị App.js gọi getUser -> 401 -> đá sang /login trước khi form kịp hiện,
@@ -38,6 +49,10 @@ instance.interceptors.response.use(
     const status = error.response && error.response.status;
     if (status === 401) {
       clearToken();
+      // Gọi handler ngay sau khi xoá token để state React luôn khớp localStorage.
+      // Ở trang công khai không có chuyển hướng "che" lỗi nên đây là cơ chế duy
+      // nhất để Header hết hiển thị trạng thái đăng nhập ảo.
+      if (unauthorizedHandler) unauthorizedHandler();
       if (!PUBLIC_PATHS.includes(window.location.pathname)) {
         window.location.href = "/login";
       }

@@ -1,6 +1,6 @@
 import axiosMock from "axios";
 import { readToken, clearToken } from "../utils/authStorage";
-import client from "./client";
+import client, { setUnauthorizedHandler } from "./client";
 
 // Mock axios: bắt lấy hai interceptor mà client.js đăng ký lúc import để test
 // gọi thẳng handler, không cần server HTTP thật.
@@ -87,9 +87,23 @@ describe("client.js — request interceptor", () => {
 });
 
 describe("client.js — response interceptor 401", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Handler nằm ở biến module-level nên sống qua các test — phải xoá tay,
+    // không như mock history được clearAllMocks dọn.
+    setUnauthorizedHandler(null);
+  });
   afterEach(() => {
     delete window.location;
+  });
+
+  test("401: gọi handler đã đăng ký để App đồng bộ state với localStorage", async () => {
+    mockLocation("/active");
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    const error = { response: { status: 401 } };
+    await expect(__handlers.responseError(error)).rejects.toBe(error);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   test("401 ở trang cần đăng nhập: xoá token và chuyển hướng /login", async () => {
@@ -105,29 +119,40 @@ describe("client.js — response interceptor 401", () => {
   // được đá sang /login — làm vậy là mất token trên query string. Đây là lỗi
   // thật đã từng xảy ra, đừng thu hẹp danh sách này.
   test.each(["/login", "/register", "/forgotPassword", "/resetPassword"])(
-    "401 ở trang công khai %s: vẫn xoá token chết nhưng KHÔNG chuyển hướng",
+    "401 ở trang công khai %s: xoá token chết, gọi handler nhưng KHÔNG chuyển hướng",
     async (pathname) => {
       mockLocation(pathname);
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
       const error = { response: { status: 401 } };
       await expect(__handlers.responseError(error)).rejects.toBe(error);
       expect(clearToken).toHaveBeenCalledTimes(1);
+      // State phải được đồng bộ ở mọi ca 401 — kể cả khi không có chuyển hướng
+      // che lỗi (đây chính là ca token cũ mở link reset trong email).
+      expect(handler).toHaveBeenCalledTimes(1);
       expect(window.location.href).toBe("http://localhost/");
     }
   );
 
-  test("lỗi không phải 401 thì không xoá token, không chuyển hướng", async () => {
+  test("lỗi không phải 401 (500) thì không xoá token, không gọi handler, không chuyển hướng", async () => {
     mockLocation("/active");
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
     const error = { response: { status: 500 } };
     await expect(__handlers.responseError(error)).rejects.toBe(error);
     expect(clearToken).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
     expect(window.location.href).toBe("http://localhost/");
   });
 
-  test("lỗi mạng (không có response) thì không xoá token", async () => {
+  test("lỗi mạng (không có response) thì không xoá token, không gọi handler", async () => {
     mockLocation("/active");
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
     const error = new Error("Network Error");
     await expect(__handlers.responseError(error)).rejects.toBe(error);
     expect(clearToken).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
     expect(window.location.href).toBe("http://localhost/");
   });
 });

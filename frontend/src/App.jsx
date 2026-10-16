@@ -17,6 +17,7 @@ import ForgotPassword from "./components/ForgotPassword";
 import ResetPassword from "./components/ResetPassword";
 import { getCurrentUser } from "./api/authApi";
 import { getTasks } from "./api/taskApi";
+import { setUnauthorizedHandler } from "./api/client";
 import { readToken } from "./utils/authStorage";
 import { TASK_ACTIONS, AUTH_ACTIONS } from "./constants";
 
@@ -26,6 +27,23 @@ function App() {
   // render nên một giá trị hỏng trong localStorage làm trắng cả màn hình.
   const [userToken, tokenDispatch] = useReducer(tokenReducer, readToken());
   const [user, userDispatch] = useReducer(userReducer, {});
+
+  // Đồng bộ state với localStorage khi có 401: response interceptor của client.js
+  // xoá được token trong localStorage nhưng không với tới state React ở đây.
+  // Thiếu bước này thì người dùng có token cũ mở link reset trong email (trang
+  // công khai — interceptor KHÔNG chuyển hướng) vẫn thấy Header "welcome, <tên>"
+  // dù mọi request sau đó đều 401, phải F5 mới hết. Đăng ký một lần lúc mount,
+  // bỏ đăng ký khi unmount. Đặt TRƯỚC các effect fetch bên dưới để handler luôn
+  // sẵn sàng trước khi bất kỳ 401 nào có thể trả về.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      tokenDispatch({ type: AUTH_ACTIONS.UNSET_TOKEN });
+      userDispatch({ type: AUTH_ACTIONS.UNSET_USER });
+    });
+    return () => setUnauthorizedHandler(null);
+    // tokenDispatch/userDispatch do useReducer cấp nên ổn định suốt vòng đời
+    // component — đăng ký đúng một lần là đủ, không cần đưa vào dependency.
+  }, []);
 
   // Cờ `cancelled`: ở chế độ dev StrictMode gọi effect 2 lần, và người dùng có
   // thể đăng xuất trong lúc request đang bay — không được ghi state từ request cũ.
