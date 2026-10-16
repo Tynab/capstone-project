@@ -13,7 +13,7 @@ Kết quả bàn giao:
 - **Toàn bộ hạ tầng bằng IaC**: một script `infra/setup.cmd` cài công cụ còn thiếu rồi dựng xong từ đầu đến cuối; Ansible cấu hình cả 2 VM; không thao tác tay trên máy ảo.
 - **Pipeline GitHub Actions 3 job** (test → build → deploy), deploy tự động chạy trên runner self-hosted đặt trong VM manager, có rollback bằng tag image.
 
-**Ngoài phạm vi** (cố ý, để không ai chờ đợi): TLS/domain thật, Alertmanager/alerting, backup MongoDB tự động, metrics mức ứng dụng (`prom-client` trong Express), nhiều môi trường staging/prod, registry tự host.
+**Ngoài phạm vi** (cố ý, để không ai chờ đợi): Alertmanager/alerting, backup MongoDB tự động, metrics mức ứng dụng (`prom-client` trong Express), nhiều môi trường staging/prod, registry tự host. (TLS + domain thật ban đầu nằm ngoài phạm vi, **đã bổ sung sau** bằng Cloudflare Tunnel + Portainer — xem [2026-10-16-cloudflare-tunnel-portainer-design.md](2026-10-16-cloudflare-tunnel-portainer-design.md).)
 
 ## 2. Các quyết định kiến trúc
 
