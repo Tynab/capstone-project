@@ -10,6 +10,5 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
-}
+/* Đã xoá rule `code { font-family: source-code-pro, ... }` của template CRA: app
+   không render thẻ <code> nào (grep toàn src không có) nên nó chỉ là CSS chết. */

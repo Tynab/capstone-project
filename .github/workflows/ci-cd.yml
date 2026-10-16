@@ -146,6 +146,10 @@ jobs:
     # thấy IP host-only 192.168.56.x, còn runner này vừa kéo được image vừa gọi
     # được docker tại chỗ.
     runs-on: [self-hosted, swarm-manager]
+    # permissions: {} — job này chỉ chạy /opt/capstone/deploy.sh trên runner self-hosted
+    # (không checkout, không gọi API GitHub), nên không cần GITHUB_TOKEN. Khai rỗng để
+    # token không được tiêm vào job: runner này là máy ảo dùng chung với cụm swarm.
+    permissions: {}
     # timeout-minutes chỉ đếm khi job ĐÃ BẮT ĐẦU chạy (chặn ca deploy.sh treo).
     # Runner offline thì job nằm ở trạng thái queued và KHÔNG bị huỷ bởi dòng này —
     # GitHub chỉ tự huỷ job queued sau ~24h. Xem mục xử lý sự cố trong infra/README.md.
@@ -161,6 +165,8 @@ jobs:
     name: Deploy thu cong (rollback)
     if: github.event_name == 'workflow_dispatch' && inputs.image_tag != ''
     runs-on: [self-hosted, swarm-manager]
+    # Như job deploy ở trên: chỉ chạy deploy.sh tại chỗ, không cần token nào.
+    permissions: {}
     timeout-minutes: 15
     concurrency:
       group: deploy-production

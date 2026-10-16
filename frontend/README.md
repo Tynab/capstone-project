@@ -10,7 +10,7 @@ npm install
 npm start        # http://localhost:3000
 ```
 
-Cần backend đang chạy (mặc định `http://localhost:8000/api`) — xem [../backend/README.md](../backend/README.md).
+Cần backend đang chạy (app gọi `/api`, dev server proxy sang `http://localhost:8000`) — xem [../backend/README.md](../backend/README.md).
 Muốn trỏ sang API khác thì đặt `VITE_API_URL` trong `.env` (mẫu ở [.env.example](.env.example)).
 
 > `VITE_*` được Vite nhúng vào bundle **lúc build**, không phải lúc chạy — đổi giá trị

@@ -37,7 +37,7 @@ try {
 
     browser = await puppeteer.launch({
         executablePath: chrome,
-        headless: 'new',
+        headless: true,
         args: ['--no-sandbox', '--disable-dev-shm-usage'],
     })
     page = await browser.newPage()

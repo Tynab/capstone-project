@@ -73,7 +73,7 @@ npm run test:api           # 49 khẳng định tầng HTTP: auth, guard bảo m
 npm run test:browser       # 14 khẳng định qua Chrome thật (cần Chrome/Edge, hoặc đặt CHROME_PATH)
 ```
 
-- Cần Node 18+ (theo [e2e/README.md](e2e/README.md) — dùng `fetch` built-in). Cổng mặc định: API 8123 (api) / 8124 (browser), web 3000; đổi bằng `E2E_API_PORT`, `E2E_WEB_PORT`.
+- Cần Node 22.12+ (Vitest 5 của frontend yêu cầu vậy; CI và máy dev đang dùng Node 24 LTS). Cổng mặc định: API 8123 (api) / 8124 (browser), web 3000; đổi bằng `E2E_API_PORT`, `E2E_WEB_PORT`.
 - **Không có cơ chế chọn một test**: cả hai file là script `node *.mjs` chạy tuần tự, in `PASS`/`FAIL` qua `record()`, exit code 1 nếu có mục đỏ. Muốn chạy hẹp thì sửa/comment trong file test, không có cờ CLI.
 - Test tự dựng `mongod` riêng và `JWT_SECRET` riêng, **không đọc `.env` thật**, không cần Mongo hay backend đang chạy sẵn.
 
@@ -83,7 +83,7 @@ Khi đổi nơi chạy, phải sửa **đồng thời** bốn biến sau — l�
 
 | Biến | Ở đâu | Ghi chú |
 |---|---|---|
-| `VITE_API_URL` | `frontend/.env` (chưa có trong repo — tạo từ `frontend/.env.example`) | Vite nhúng vào bundle **lúc build** → đổi phải build lại. Mặc định `http://localhost:8000/api` ([frontend/src/api/client.js](frontend/src/api/client.js)) |
+| `VITE_API_URL` | `frontend/.env` (chưa có trong repo — tạo từ `frontend/.env.example`) | Vite nhúng vào bundle **lúc build** → đổi phải build lại. Mặc định là đường dẫn tương đối `/api` ([frontend/src/api/client.js](frontend/src/api/client.js)) — dev server Vite proxy `/api` sang backend |
 | `PORT` | `backend/.env` | `8000`; fallback trong mã là `8001` |
 | `CORS_ORIGIN` | `backend/.env` | Danh sách origin phân tách bằng dấu phẩy; origin lạ bị từ chối bằng cách không gắn header CORS |
 | `FRONTEND_URL` | `backend/.env` (hiện chưa đặt — đang dùng mặc định; mẫu ở `.env.example`) | Gốc frontend dùng để dựng link reset trong email; mặc định trỏ tới domain Firebase cũ |

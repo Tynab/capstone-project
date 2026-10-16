@@ -7,7 +7,7 @@
 .pnp.js
 
 # sản phẩm build và coverage
-/build
+/dist
 /coverage
 
 # biến môi trường — .env chứa cấu hình riêng của máy, không commit

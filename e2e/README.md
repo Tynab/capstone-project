@@ -16,7 +16,7 @@ npm run test:api     # test tầng API
 npm run test:browser # test qua trình duyệt thật
 ```
 
-Yêu cầu: Node 18+ (dùng `fetch` built-in). Test trình duyệt cần Chrome hoặc Edge —
+Yêu cầu: Node 22.12+ (Vitest 5 của frontend cần vậy; CI dùng Node 24). Test trình duyệt cần Chrome hoặc Edge —
 tự dò các đường dẫn thông dụng, hoặc đặt `CHROME_PATH` để chỉ định.
 
 Biến môi trường: `E2E_API_PORT` (mặc định 8123 / 8124), `E2E_WEB_PORT` (mặc định 3000).

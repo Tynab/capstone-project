@@ -47,7 +47,7 @@ Công khai qua **Cloudflare Tunnel** (bật/gỡ bằng một biến trong `infr
 | [frontend/](frontend/) | React 18 + Vite + Tailwind, phục vụ bằng nginx | Giao diện; nginx proxy `/api` sang backend nên cùng origin, không cần CORS |
 | [backend/](backend/) | Express 4 + Mongoose 6 (ESM), JWT | API: user, task, quên/đặt lại mật khẩu; rate limit theo IP |
 | [infra/](infra/) | Vagrant + Ansible → Docker Swarm | Dựng 2 VM, cài Docker, join swarm, sinh secret, deploy stack, cài runner |
-| [e2e/](e2e/) | Node + mongodb-memory-server + puppeteer-core | Test trên hạ tầng thật: 43 khẳng định tầng API + 13 khẳng định qua Chrome |
+| [e2e/](e2e/) | Node + mongodb-memory-server + puppeteer-core | Test trên hạ tầng thật: 49 khẳng định tầng API + 14 khẳng định qua Chrome |
 | [.github/workflows/](.github/workflows/) | GitHub Actions | Pipeline test → build → deploy |
 | Cloudflare Tunnel | cloudflared chạy trong stack | Đưa app/API ra domain thật mà không mở cổng vào, không cần IP công khai |
 | Portainer | portainer-ce + agent (`mode: global`) | Quản trị swarm trên UI, xem container/volume/image của cả 2 node |
@@ -96,8 +96,8 @@ npm install && npm start # http://localhost:3000
 # Test (không cần cài MongoDB: bộ test tự dựng mongod)
 cd backend && npm test              # unit test
 cd e2e && npm install
-npm run test:api                    # 43 khẳng định tầng HTTP
-npm run test:browser                # 13 khẳng định qua Chrome thật
+npm run test:api                    # 49 khẳng định tầng HTTP
+npm run test:browser                # 14 khẳng định qua Chrome thật
 ```
 
 ## CICD

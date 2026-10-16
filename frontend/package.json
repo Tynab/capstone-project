@@ -17,6 +17,7 @@
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{js,jsx,css}\""
   },
+  "//browserslist": "Khối browserslist dưới đây CHỈ được autoprefixer đọc để thêm tiền tố CSS. Vite KHÔNG đọc nó khi transpile JS (Vite dùng build.target của esbuild) — đừng tưởng sửa đây là đổi được trình duyệt hỗ trợ của bundle. @testing-library/dom khai trực tiếp vì nó là peerDependency của @testing-library/react 14.",
   "browserslist": {
     "production": [
       ">0.2%",

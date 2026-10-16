@@ -79,7 +79,6 @@ export const startStack = async ({ apiPort, webPort, withFrontend = false }) => 
             env: {
                 ...process.env,
                 PORT: String(webPort),
-                BROWSER: 'none',
                 CI: 'false',
                 // Ứng dụng luôn gọi đường dẫn tương đối /api; dev server Vite proxy
                 // /api sang backend của bộ test. Đích proxy đọc trong Node nên không

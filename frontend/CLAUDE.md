@@ -35,7 +35,7 @@ npm run lint       # ESLint 9 (flat config: eslint.config.mjs)
 
 ### Lớp gọi API — component không bao giờ gọi axios trực tiếp
 
-- [src/api/client.js](src/api/client.js): instance axios duy nhất. `baseURL` lấy từ `VITE_API_URL`, mặc định `http://localhost:8000/api`.
+- [src/api/client.js](src/api/client.js): instance axios duy nhất. `baseURL` lấy từ `VITE_API_URL`, mặc định là đường dẫn tương đối `/api` (dev: Vite proxy; production: nginx proxy).
 - **Request interceptor** tự gắn `Authorization: Bearer` cho mọi request. Không dựng header bằng tay ở chỗ gọi.
 - **Response interceptor cho 401**: xoá token và chuyển hướng `/login`, **trừ** 4 đường dẫn trong `PUBLIC_PATHS` (login/register/forgotPassword/resetPassword). Phải giữ nguyên danh sách này — người dùng có token cũ mở link reset trong email sẽ mất token trên query string nếu bị đá sang `/login`.
 - [src/api/authApi.js](src/api/authApi.js), [src/api/taskApi.js](src/api/taskApi.js): mọi lời gọi API đi qua đây; component không cần biết đường dẫn HTTP.
