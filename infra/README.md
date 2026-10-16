@@ -76,8 +76,8 @@ infra\start.cmd
 # Những lần sau (cập nhật cấu hình hạ tầng)
 cd infra && vagrant provision --provision-with ansible
 
-# Dựng lại từ đầu — XOÁ CẢ DỮ LIỆU MONGODB trong VM
-infra\destroy.cmd
+# Dọn hạ tầng theo 3 mức độ (state / vm / full) — xem mục "Dọn dẹp" bên dưới
+infra\destroy.cmd -Mode vm
 ```
 
 `start.cmd` chỉ chạy `vagrant up` rồi chờ app trả lời (tối đa 3 phút) — swarm giữ nguyên trạng
@@ -89,6 +89,58 @@ cho từng VM bằng tay).
 thêm rule firewall cho mạng host-only → sinh khoá SSH lab (`infra/.ssh/lab_key`) →
 lấy runner token bằng `gh` → `vagrant up` → `vagrant provision --provision-with ansible`.
 Chạy lại nhiều lần vô hại.
+
+## Dọn dẹp (destroy.cmd)
+
+`infra\destroy.cmd` dọn hạ tầng theo 3 mức độ, tự sao lưu MongoDB trước khi xoá
+(ở Mode vm/full) và tự in checklist kiểm chứng sau khi xong. **Luôn chạy `-DryRun`
+trước** mỗi lần dọn thật — chế độ đó chỉ in ra việc sẽ làm, không chạy lệnh nào.
+
+```bat
+infra\destroy.cmd -DryRun
+infra\destroy.cmd -Mode state
+infra\destroy.cmd -Mode vm
+infra\destroy.cmd -Mode full -PurgeRepoFiles -KeepBox remove
+```
+
+| Mode | Làm gì | Giữ lại |
+|---|---|---|
+| `vm` (mặc định) | Xoá 2 VM (thu hồi ~16.1GB: manager ~9.6GB + worker ~6.5GB), xoá `.vagrant/`, `vagrant global-status --prune`, gỡ đăng ký runner trên GitHub | Box `bento/ubuntu-22.04` (~811MB), file repo (`.ssh`, `.env`) |
+| `state` | **GIỮ 2 VM**, dọn bên trong: `docker stack rm capstone`; xoá volume `capstone_*` + volume vô danh; `rm -rf /opt/capstone`; gỡ systemd unit runner + `/home/ghrunner/actions-runner`; `docker swarm leave --force` (worker trước, manager sau); xoá network rác `smoke-net` | VM, image docker |
+| `full` | Như `vm`, cộng: `-PurgeRepoFiles` xoá `infra/.ssh/` + `infra/.env`, `-RemoveFirewallRule` gỡ rule `capstone-lab-hostonly`, `-KeepBox remove` xoá box | Không gì (toàn bộ) |
+
+> Mode `state` **vẫn gỡ đăng ký runner trên GitHub** (giống `vm`/`full`): mọi mode đều làm runner
+> ngừng tồn tại, để GitHub không giữ mãi một runner "offline" mồ côi. Muốn giữ lại thì thêm
+> `-DeregisterRunner no` — chạy xong nhớ tắt/xoá runner đó trên GitHub bằng tay.
+
+Tham số:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `-Mode vm\|state\|full` | Mức độ dọn (mặc định `vm`) |
+| `-DryRun` | Chỉ in ra việc sẽ làm, không chạy lệnh thật |
+| `-Yes` | Bỏ qua mọi prompt xác nhận (script vẫn in rõ là đang bỏ qua) |
+| `-KeepBox no` | (chỉ Mode `full`) xoá luôn box `bento/ubuntu-22.04` (~811MB). Mặc định **BẬT** (giữ box) |
+| `-DeregisterRunner no` | Giữ runner `swarm-manager-1` đăng ký trên GitHub. Mặc định **BẬT** (gỡ đăng ký) |
+| `-PurgeRepoFiles` | (chỉ Mode `full`) xoá cả `infra/.ssh/` (khoá lab) và `infra/.env` (token tunnel thật) |
+| `-RemoveFirewallRule` | (chỉ Mode `full`) gỡ rule firewall `capstone-lab-hostonly` (hiện UAC) |
+| `-SkipBackup` | Bỏ qua bước sao lưu MongoDB tự động |
+
+Chú ý khi dùng:
+
+- **Xác nhận:** script liệt kê hậu quả rồi bắt gõ đúng chữ `XOA` (Mode `state` cũng hỏi vì
+  nó xoá dữ liệu Mongo). `-PurgeRepoFiles` và việc xoá box được hỏi xác nhận **riêng lần hai**.
+- **Sao lưu Mongo tự động** (Mode `vm`/`full`, trừ khi `-SkipBackup`): mongodump chạy trong
+  VM → `infra/backup-mongo-<ngày>.gz`, kiểm `gzip -t` trong VM rồi scp ra Windows. **Backup
+  lỗi thì script DỪNG, không destroy.** Mode `state` **không** tự backup — nếu cần dữ liệu
+  hãy chạy tay lệnh trong mục "Vận hành" trước.
+- ⚠️ `-PurgeRepoFiles` xoá `infra/.env` (token Cloudflare thật). Trước khi dựng lại bằng
+  `infra\setup.cmd` phải dán lại token tunnel (mục Cloudflare Tunnel) nếu muốn domain công
+  khai hoạt động — `setup.cmd` chỉ tạo lại file từ mẫu đang để trống token.
+- Script **không đụng**: adapter host-only của VirtualBox và DHCP server `192.168.56.0/24`
+  (dùng chung, xoá có thể ảnh hưởng project khác), `~/.ssh/known_hosts`, dịch vụ nền
+  VBoxSVC/VBoxSDS.
+- Dựng lại từ đầu sau khi dọn: chạy `infra\setup.cmd` (tự cài thiếu, tạo VM, provision).
 
 ## Cloudflare Tunnel (đưa app ra Internet)
 
@@ -150,8 +202,10 @@ admin với đúng mật khẩu đó.
 | Lấy mật khẩu lab (Grafana, Portainer, Mongo, JWT, token tunnel) | cmd: `"%ProgramFiles%\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` · PowerShell: `& "$env:ProgramFiles\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` |
 | Đăng ký lại runner khi token cũ hết hạn | `$env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token); cd infra; vagrant provision --provision-with ansible` |
 
-**Sao lưu MongoDB trước khi `destroy`** — chạy từ Git Bash, file ghi thẳng về máy
-Windows (KHÔNG ghi vào `/tmp` của VM: `destroy` xoá luôn, tưởng có backup mà mất):
+**Sao lưu MongoDB trước khi `destroy`** — `destroy.ps1` (Mode vm/full) tự chạy bước này
+và ghi kết quả về `infra/backup-mongo-<ngày>.gz`; lệnh dưới dành cho khi cần chạy tay
+(cũng cần trước khi dọn Mode `state`, vốn không tự backup). Chạy từ Git Bash, file ghi
+thẳng về máy Windows (KHÔNG ghi vào `/tmp` của VM: `destroy` xoá luôn, tưởng có backup mà mất):
 
 ```bash
 cd infra
