@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dự án này là gì
 
-Ứng dụng todo 3 phần — React (CRA) + Express/Mongoose + MongoDB — nhưng **mục đích thật của repo là bài cuối khóa CyberSoft DevOps 04**. Đề bài ở [du-an-cuoi-khoa.md](du-an-cuoi-khoa.md) yêu cầu **2 hạng mục**: dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus**.
+Ứng dụng todo 3 phần — React (CRA) + Express/Mongoose + MongoDB — nhưng **mục đích thật của repo là bài cuối khóa CyberSoft DevOps 04**. Đề bài yêu cầu **2 hạng mục**: dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus** (file đề bài gốc `du-an-cuoi-khoa.md` đã được xoá sau khi hoàn thành — xem git history nếu cần đối chiếu).
 
 Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) (job `test` → `build` đẩy image lên GHCR → `deploy` chạy trên GitHub self-hosted runner đặt trong VM manager) và [infra/](infra/) (Vagrant + Ansible dựng Docker Swarm 2 node, stack có Prometheus + Grafana + node-exporter + cAdvisor + mongodb-exporter + blackbox-exporter). Cách dựng và vận hành: [infra/README.md](infra/README.md).
 

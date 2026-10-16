@@ -8,7 +8,7 @@ Frontend `todo-app`: Create React App 5 (`react-scripts` 5.0.1) + React 18, Java
 
 Version control: repo git được khởi tạo ở **gốc dự án `../`** (không phải trong `frontend/`), kèm `.gitignore` ở gốc lo `node_modules/`, `.env`, `frontend/build/`. Lịch sử hiện chỉ có một commit `aa96208` (Initial commit, chứa `README.md` và `.gitattributes`); các hash cũ (`ff8dd63`, `713d1dd`) được nhắc trong tài liệu phiên trước không còn tồn tại trong repo này.
 
-Chưa có Dockerfile/compose/CI: đây là phần frontend của dự án DevOps cuối khóa; đề bài hiện tại ở [../du-an-cuoi-khoa.md](../du-an-cuoi-khoa.md) yêu cầu **2 hạng mục** — dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus**.
+Đây là phần frontend của dự án DevOps cuối khóa (đề bài: dựng CICD GitHub Actions + hệ thống giám sát Grafana/Prometheus — cả hai đã dựng xong, xem [../infra/README.md](../infra/README.md)). Đóng gói: [Dockerfile](Dockerfile) (build CRA rồi phục vụ bằng nginx, proxy `/api` sang backend) — image được CI build và deploy lên swarm, không build tại máy Windows.
 
 ## Lệnh thường dùng
 

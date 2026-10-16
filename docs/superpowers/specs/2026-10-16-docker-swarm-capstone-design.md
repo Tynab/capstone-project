@@ -5,7 +5,7 @@ Trạng thái: chờ duyệt (chưa thi công)
 
 ## 1. Mục tiêu và phạm vi
 
-Đề bài ([du-an-cuoi-khoa.md](../../../du-an-cuoi-khoa.md)) yêu cầu đúng **2 hạng mục**: dựng CICD bằng GitHub Actions, và dựng hệ thống giám sát Grafana + Prometheus. Ứng dụng đã có sẵn trong repo (React + Express + MongoDB) và đã qua nhiều vòng review — thiết kế này dựng hạ tầng quanh nó, không viết lại ứng dụng.
+Đề bài (file `du-an-cuoi-khoa.md`, đã xoá sau khi hoàn thành) yêu cầu đúng **2 hạng mục**: dựng CICD bằng GitHub Actions, và dựng hệ thống giám sát Grafana + Prometheus. Ứng dụng đã có sẵn trong repo (React + Express + MongoDB) và đã qua nhiều vòng review — thiết kế này dựng hạ tầng quanh nó, không viết lại ứng dụng.
 
 Kết quả bàn giao:
 
