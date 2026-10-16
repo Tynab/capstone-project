@@ -27,14 +27,24 @@ echo "Deploy {{ stack_name }}: backend=${BACKEND_IMAGE} frontend=${FRONTEND_IMAG
 docker stack deploy --prune -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
 
 # Chờ các service hội tụ (tối đa 180s) trước khi kết luận.
+# Phải thấy ĐỦ REPLICA HAI LẦN LIÊN TIẾP mới kết luận. Lý do: ngay sau `stack deploy`,
+# service vừa được update vẫn còn task CŨ đang chạy, nên mẫu đầu tiên có thể thấy "1/1"
+# trong khi task mới sắp chết — đã gặp thật: token sai định dạng -> task exit 255, service
+# về 0/1, nhưng deploy.sh vẫn exit 0 vì mẫu đầu rơi đúng lúc task cũ còn sống.
 converged=0
+lan_truoc_du=0
 for i in $(seq 1 36); do
   replicas=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
   # awk exit 0 = mọi dòng đều "N/N"; exit 1 = còn service chưa đủ replica.
   if [ -n "$replicas" ] && echo "$replicas" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
-    echo "Tất cả service đã đủ replica (sau ${i} lần kiểm tra)."
-    converged=1
-    break
+    if [ "$lan_truoc_du" = "1" ]; then
+      echo "Tất cả service đã đủ replica và ổn định qua 2 lần kiểm tra (lần ${i})."
+      converged=1
+      break
+    fi
+    lan_truoc_du=1
+  else
+    lan_truoc_du=0
   fi
   sleep 5
 done
@@ -63,6 +73,15 @@ if ! echo "$running" | grep -qF "${BACKEND_IMAGE}" || ! echo "$running" | grep -
   echo "LỖI: service KHÔNG chạy đúng ảnh được yêu cầu (${BACKEND_IMAGE} / ${FRONTEND_IMAGE})."
   echo "Thường là image không tồn tại nên swarm đã rollback về bản cũ."
   exit 1
+fi
+
+# Kiểm tra lần cuối ngay trước khi kết luận: sau healthcheck, mọi service phải VẪN đủ
+# replica. Bịt nốt khe thời gian giữa vòng hội tụ và lúc kết luận (task mới có thể chết
+# sau khi vòng hội tụ đã xanh).
+final=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
+if [ -z "$final" ] || ! echo "$final" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
+  echo "LỖI: sau healthcheck vẫn còn service chưa đủ replica."
+  converged=0
 fi
 
 if [ "$health_ok" != "1" ] || [ "$converged" != "1" ]; then
