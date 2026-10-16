@@ -70,11 +70,10 @@ app.use(
 );
 
 //db config
+// (Không truyền options nữa: `useNewUrlParser` đã bị Mongoose 6 bỏ và bị bỏ qua im
+// lặng — để lại chỉ gây hiểu nhầm là còn tác dụng.)
 mongoose.connect(
   process.env.MONGO_URI,
-  {
-    useNewUrlParser: true,
-  },
   async (err) => {
     if (err) {
       // Không mở cổng khi chưa có DB. Trước đây server vẫn listen nên nó trông như

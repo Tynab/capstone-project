@@ -1,5 +1,6 @@
 import userModel from "../models/userModel.js";
 import { getTransporter } from "../services/mailService.js";
+import { mailFromAddress } from "../services/smtpConfig.js";
 import crypto from "crypto";
 import { hashPassword } from "../utils/password.js";
 import logger from "../utils/logger.js";
@@ -51,9 +52,8 @@ const forgotPassword = async (req, res) => {
       // cố che. Lỗi gửi mail vẫn được ghi log qua .catch, không bị nuốt im lặng.
       transporter
         .sendMail({
-          // Gmail SMTP bắt buộc from là chính tài khoản đã xác thực, nên lấy từ
-          // env thay vì hardcode: đổi người gửi không phải sửa code.
-          from: process.env.GMAIL_USERNAME || "alok.yadav6000@gmail.com",
+          // Người gửi: một chỗ duy nhất quyết định (services/smtpConfig.js).
+          from: mailFromAddress(),
           to: email,
           subject: "Reset Password",
           html: `<h1>Reset Password</h1><h2>Click on the link to reset your password</h2><h3>${resetUrl}</h3>`,
@@ -64,7 +64,9 @@ const forgotPassword = async (req, res) => {
     }
   } catch (error) {
     // vẫn trả thông báo chung: nếu trả lỗi riêng thì kẻ tấn công dò được email qua phản hồi
-    logger.info("forgotPassword error:", error.message);
+    // Mức log là error (không phải info): đây là lỗi thật (DB/bcrypt), không phải
+    // chuyện thường ngày — và nhánh gửi mail lỗi ngay bên trên cũng đã dùng error.
+    logger.error("forgotPassword error:", error.message);
   }
 
   res.status(200).json({ message: genericMessage });
@@ -128,6 +130,10 @@ const resetPassword = async (req, res) => {
 
     res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
+    // Đây từng là nhánh catch DUY NHẤT trong backend không ghi log: MongoDB chết
+    // đúng lúc giữa exists và findOneAndUpdate thì người dùng nhận 500 còn vận hành
+    // không có một dòng nào để chẩn đoán. Chỉ thêm log, giữ nguyên nội dung response.
+    logger.error("resetPassword error:", error.message);
     res.status(500).json({ message: "Password reset failed" });
   }
 };

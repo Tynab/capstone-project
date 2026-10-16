@@ -16,7 +16,7 @@ npm run migrate:userid         # migration một lần cho dữ liệu task cũ 
 
 - Cần MongoDB local (`MONGO_URI` trong `.env`). Không kết nối được DB thì callback của `mongoose.connect` ghi log rồi `process.exit(1)`, còn `app.listen` chỉ chạy trong nhánh kết nối thành công — server **không mở cổng khi chưa có DB** ([server.js](server.js)).
 - `JWT_SECRET` là bắt buộc: `server.js` thoát ngay khi thiếu biến này ([server.js](server.js)).
-- Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `REACT_APP_API_URL`, mặc định `http://localhost:8000/api` ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
+- Cổng lấy từ `PORT` (đang `8000`, fallback `8001`). Frontend gọi qua `VITE_API_URL`, mặc định đường dẫn tương đối `/api` (dev: Vite proxy; production: nginx proxy) ([../frontend/src/api/client.js](../frontend/src/api/client.js)).
 - `npm test` chạy unit test bằng `node --test` (Node tự quét `*.test.js`): `smtpConfig`, `mailTransport`, `password`, `rateLimit`, `userModel`. `npm run format` chạy Prettier (cấu hình ở `.prettierrc`, dùng chung quy ước với frontend). Test end-to-end thật nằm ở [../e2e](../e2e/README.md). Đóng gói và deploy: [../infra/README.md](../infra/README.md) (image dựng từ `backend/Dockerfile`, không cần Docker trên máy — build trong VM hoặc trên CI).
 
 ### Biến môi trường (.env)
@@ -116,7 +116,7 @@ Object `user` trong mọi response đều đi qua whitelist `toSafeUser` ở [us
 
 - CORS chỉ cho các origin trong `CORS_ORIGIN` (phân tách bằng dấu phẩy; mặc định `http://localhost:3000,https://todo-app-b96a5.web.app`). Origin lạ bị từ chối bằng cách không gắn header CORS — cố ý không ném Error để khỏi sinh lỗi 500 vô nghĩa trong log.
 - `helmet()` đặt các header phòng thủ; `express.json()` thay cho `body-parser`.
-- Link reset dựng từ `FRONTEND_URL`, `from` của mail lấy từ `GMAIL_USERNAME`; cả hai vẫn còn giá trị dự phòng hardcode khi thiếu env (`https://todo-app-b96a5.web.app` và `alok.yadav6000@gmail.com` — [forgotPasswordController.js](controllers/forgotPasswordController.js), [mailService.js](services/mailService.js)).
+- Link reset dựng từ `FRONTEND_URL`, `from` của mail đi qua một chỗ duy nhất: `mailFromAddress()` trong [smtpConfig.js](services/smtpConfig.js), thứ tự `MAIL_FROM` → `GMAIL_USERNAME` → `Todo App <no-reply@localhost>`.
 - Mail nằm ở [services/mailService.js](services/mailService.js): `getTransporter()` dùng lại một transporter theo cấu hình (mail reset trong [forgotPasswordController.js](controllers/forgotPasswordController.js) cũng gọi hàm này, không tự dựng transporter riêng), `sendTaskAddedMail` tự bỏ qua khi thiếu credentials thay vì ném lỗi.
 - Mật khẩu tối thiểu **8 ký tự** (`MIN_PASSWORD_LENGTH`), kiểm ở cả `registerUser` và `resetPassword`.
 - Log đi qua [utils/logger.js](utils/logger.js) — có mức `error|warn|info|debug`, đặt bằng `LOG_LEVEL`, kèm timestamp và tách stderr. Đừng gọi `console.*` trực tiếp trong mã chạy. Logger đọc `LOG_LEVEL` **lúc gọi** chứ không lúc import, vì `dotenv.config()` chạy sau khi các module đã được nạp.

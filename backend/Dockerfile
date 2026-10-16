@@ -1,11 +1,11 @@
 # node:20-slim (glibc) chứ không phải alpine: bcrypt là native addon, trên musl
 # thường phải build lại từ source và dễ vỡ khi thiếu toolchain.
-FROM node:20-slim AS deps
+FROM node:24-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:20-slim
+FROM node:24-slim
 ENV NODE_ENV=production
 # Mã nguồn mặc định 8001 khi thiếu PORT; đặt 8000 ngay trong image để image tự
 # nhất quán với EXPOSE bên dưới (đã gặp thật: thiếu biến -> app nghe 8001, map

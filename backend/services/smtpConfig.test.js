@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTransportOptions, hasMailConfig } from "./smtpConfig.js";
+import { buildTransportOptions, hasMailConfig, mailFromAddress } from "./smtpConfig.js";
 
 test("SMTP_HOST được đặt -> dùng host/port/secure từ env, không dùng service gmail", () => {
   const opts = buildTransportOptions({
@@ -41,4 +41,18 @@ test("hasMailConfig: true khi có SMTP_HOST, hoặc có đủ cặp GMAIL_*", ()
   assert.equal(hasMailConfig({ GMAIL_USERNAME: "a", GMAIL_PASSWORD: "b" }), true);
   assert.equal(hasMailConfig({ GMAIL_USERNAME: "a" }), false);
   assert.equal(hasMailConfig({}), false);
+});
+
+test("mailFromAddress: MAIL_FROM thắng tất cả", () => {
+  assert.equal(mailFromAddress({ MAIL_FROM: "a@b.c", GMAIL_USERNAME: "g@gmail.com" }), "a@b.c");
+});
+
+test("mailFromAddress: không có MAIL_FROM thì lấy GMAIL_USERNAME (Gmail bắt buộc)", () => {
+  assert.equal(mailFromAddress({ GMAIL_USERNAME: "g@gmail.com" }), "g@gmail.com");
+});
+
+test("mailFromAddress: thiếu cả hai thì trả giá trị trung tính của dự án, KHÔNG phải Gmail lạ", () => {
+  const from = mailFromAddress({});
+  assert.match(from, /no-reply@localhost/);
+  assert.doesNotMatch(from, /gmail\.com/);
 });
