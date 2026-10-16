@@ -5,7 +5,7 @@
 // dùng mongodb-memory-server thay vì giả lập Mongoose: nó tải và chạy một binary
 // mongod thật, nên hành vi Mongo (ví dụ `null` khớp cả field bị thiếu) là thật.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -81,7 +81,11 @@ export const startStack = async ({ apiPort, webPort, withFrontend = false }) => 
                 PORT: String(webPort),
                 BROWSER: 'none',
                 CI: 'false',
-                REACT_APP_API_URL: `http://127.0.0.1:${apiPort}/api`,
+                // Ứng dụng luôn gọi đường dẫn tương đối /api; dev server Vite proxy
+                // /api sang backend của bộ test. Đích proxy đọc trong Node nên không
+                // dính chuyện Vite không đưa process.env.VITE_* vào import.meta.env
+                // ở chế độ dev (từng làm e2e đỏ vì app gọi nhầm localhost:8000).
+                VITE_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
             },
         })
         if (!(await waitHttp(`http://localhost:${webPort}/`, 240))) {
@@ -93,7 +97,19 @@ export const startStack = async ({ apiPort, webPort, withFrontend = false }) => 
         mongoUri: mongod.getUri(),
         logs,
         stop: async () => {
-            for (const p of procs) { try { p.kill('SIGKILL') } catch { /* tiến trình đã chết */ } }
+            for (const p of procs) {
+                // Trên Windows, dev server frontend được spawn qua shell (`npm start`
+                // -> cmd.exe -> node/vite). Giết shell KHÔNG giết tiến trình con, nên
+                // cổng 3000 vẫn bị giữ lại sau khi test xong; lần chạy sau gặp
+                // strictPort của Vite (không được nhảy cổng) và đỏ rất khó hiểu — đã
+                // gặp thật. Phải `taskkill /T` giết CẢ CÂY, và phải làm TRƯỚC khi giết
+                // shell: shell chết rồi thì không còn ai để truy ra các con của nó.
+                if (process.platform === 'win32' && p.pid) {
+                    try { spawnSync('taskkill', ['/PID', String(p.pid), '/T', '/F'], { stdio: 'ignore' }) }
+                    catch { /* không giết được thì thôi, không che lỗi test */ }
+                }
+                try { p.kill('SIGKILL') } catch { /* tiến trình đã chết */ }
+            }
             try { await mongod.stop() } catch { /* mongod đã dừng */ }
         },
     }
