@@ -44,10 +44,21 @@ và chỉ cần đúng một lệnh `vagrant up`.
 
 ## Quy trình
 
-> **Lưu ý về PATH:** trình cài Vagrant không thêm thư mục của nó vào PATH, nên gõ `vagrant ...`
-> trong cmd/PowerShell thường báo "không tìm thấy lệnh". Dùng đường dẫn đầy đủ
-> `"%ProgramFiles%\Vagrant\bin\vagrant.exe"` cho mọi lệnh dưới đây, hoặc chạy `infra\start.cmd`
-> (script tự dò đường dẫn rồi bật lại cụm).
+> **Lưu ý về PATH và cách gọi lệnh:** trình cài Vagrant không thêm thư mục của nó vào PATH, nên gõ
+> `vagrant ...` sẽ báo "không tìm thấy lệnh". Phải gọi bằng đường dẫn đầy đủ, và **cmd.exe với
+> PowerShell viết khác nhau** (PowerShell cần call operator `&` và biến `$env:`):
+>
+> ```bat
+> :: cmd.exe
+> "%ProgramFiles%\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"
+> ```
+>
+> ```powershell
+> # PowerShell (lỗi "Unexpected token" nếu thiếu dấu &)
+> & "$env:ProgramFiles\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"
+> ```
+>
+> Hoặc đơn giản nhất: chạy `infra\start.cmd` — script tự dò đường dẫn, không phải gõ lệnh dài.
 
 ```bash
 # Lần đầu (cài thiếu gì tự cài, sẽ hiện UAC vài lần)
@@ -130,7 +141,7 @@ admin với đúng mật khẩu đó.
 | Trạng thái stack | `vagrant ssh manager -c "sudo docker stack services capstone"` |
 | Deploy tay một tag (rollback) | `vagrant ssh manager -c "sudo /opt/capstone/deploy.sh sha-abc1234"` |
 | Provision có kéo ảnh về `:latest` không | **Có** — `deploy.sh` không truyền tag sẽ deploy `${BACKEND_REPO}:latest`; CI thì luôn ghim `sha-xxxx`. Muốn giữ đúng bản đang chạy thì truyền tag như dòng trên |
-| Lấy mật khẩu lab (Grafana, Portainer, Mongo, JWT, token tunnel) | `"%ProgramFiles%\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` |
+| Lấy mật khẩu lab (Grafana, Portainer, Mongo, JWT, token tunnel) | cmd: `"%ProgramFiles%\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` · PowerShell: `& "$env:ProgramFiles\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` |
 | Đăng ký lại runner khi token cũ hết hạn | `$env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token); cd infra; vagrant provision --provision-with ansible` |
 
 **Sao lưu MongoDB trước khi `destroy`** — chạy từ Git Bash, file ghi thẳng về máy
