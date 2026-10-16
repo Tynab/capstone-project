@@ -330,6 +330,14 @@ Muốn chuyển sang private:
 - **HSTS không đặt ở nginx** (nginx phục vụ HTTP, TLS do Cloudflare lo) — phải bật tay một lần ở
   dashboard Cloudflare: **SSL/TLS → Edge Certificates → HSTS → Enable** (khuyến nghị max-age 6 tháng,
   bật `Include subdomains`). Bật xong thì mọi truy cập http:// sẽ được ép sang https.
+- **Cảnh báo đã đo thật (2026-10-17)**: nếu zone Cloudflare bật **Bot Fight Mode / JavaScript
+  Detections**, Cloudflare chèn thêm **một script INLINE** vào HTML (`window.__CF$cv$params` +
+  `/cdn-cgi/challenge-platform/scripts/jsd/main.js`) và CSP chặt của mình sẽ chặn nó — console trình
+  duyệt hiện "Executing inline script violates ... script-src 'self'". Không thể vá bằng hash vì nội
+  dung script đổi theo từng request. Hai đường: **tắt Bot Fight Mode** ở dashboard
+  (Security → Bots) — khuyến nghị cho domain lab, app không hề bị ảnh hưởng khi script đó bị chặn — hoặc
+  chấp nhận một dòng lỗi console để giữ tính năng bot. HTML ở **origin** chỉ có đúng một thẻ script
+  (bundle của Vite), nên đây là vấn đề của Cloudflare chứ không phải của app.
 - `frontend/nginx.conf` tin `CF-Connecting-IP` từ mọi peer trong `10.0.0.0/8`, mà gateway của routing
   mesh cũng nằm trong dải đó — nên **trong mạng host-only**, một client tự gửi header này sẽ đổi được
   IP mà backend nhìn thấy (chỉ ảnh hưởng rate limit trong lab). Từ Internet thì không: đo thật
