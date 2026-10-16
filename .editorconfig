@@ -5,12 +5,19 @@ root = true
 
 [*]
 charset = utf-8
-end_of_line = lf
 indent_style = space
 indent_size = 2
 insert_final_newline = true
 trim_trailing_whitespace = true
+# Không đặt end_of_line ở đây: để .gitattributes quyết định theo loại file
+# (Linux dùng LF, file của Windows dùng CRLF) — hai chỗ khai báo lệch nhau là
+# nguồn của diff giả và lỗi "bad interpreter: /bin/bash^M".
 
+# File chạy trong VM Linux
+[*.{sh,yml,yaml,j2,ini}]
+end_of_line = lf
+
+# File của Windows
 [*.{cmd,bat,ps1}]
 end_of_line = crlf
 
