@@ -35,8 +35,11 @@ converged=0
 lan_truoc_du=0
 for i in $(seq 1 36); do
   replicas=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
-  # awk exit 0 = mọi dòng đều "N/N"; exit 1 = còn service chưa đủ replica.
-  if [ -n "$replicas" ] && echo "$replicas" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
+  # awk exit 0 = mọi dòng đều "chạy >= mong đợi"; exit 1 = còn service THIẾU replica.
+  # Cố ý so `>=` chứ không `==`: khi rolling update, swarm (order: start-first) tạm
+  # chạy DƯ một task nên replicas là "3/2" — đó là trạng thái lành, đòi bằng đúng thì
+  # deploy đúng vẫn bị kết luận đỏ (đã gặp thật ngày 2026-10-16).
+  if [ -n "$replicas" ] && echo "$replicas" | awk '{split($2, a, "/"); if (a[1]+0 < a[2]+0) exit 1}'; then
     if [ "$lan_truoc_du" = "1" ]; then
       echo "Tất cả service đã đủ replica và ổn định qua 2 lần kiểm tra (lần ${i})."
       converged=1
@@ -86,9 +89,10 @@ fi
 
 # Kiểm tra lần cuối ngay trước khi kết luận: sau healthcheck, mọi service phải VẪN đủ
 # replica. Bịt nốt khe thời gian giữa vòng hội tụ và lúc kết luận (task mới có thể chết
-# sau khi vòng hội tụ đã xanh).
+# sau khi vòng hội tụ đã xanh). Điều kiện là "KHÔNG THIẾU" (chạy >= mong đợi), không
+# phải "bằng đúng" — xem lý do ở vòng hội tụ phía trên (3/2 khi rolling update).
 final=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
-if [ -z "$final" ] || ! echo "$final" | awk '{split($2, a, "/"); if (a[1] != a[2]) exit 1}'; then
+if [ -z "$final" ] || ! echo "$final" | awk '{split($2, a, "/"); if (a[1]+0 < a[2]+0) exit 1}'; then
   echo "LỖI: sau healthcheck vẫn còn service chưa đủ replica."
   converged=0
 fi
