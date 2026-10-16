@@ -259,7 +259,7 @@ Không đổi: `.github/workflows/ci-cd.yml` (deploy vẫn đi qua `deploy.sh`),
 | Đổi token (rotate) | Sửa `infra/.env` → provision. `deploy.sh` cập nhật env của service, swarm thay task |
 | Gỡ tunnel | Xoá token trong `infra/.env` → provision. `--prune` xoá service `capstone_cloudflared` |
 | Deploy thường (CI) | Không đổi: job `deploy` gọi `/opt/capstone/deploy.sh <tag>` |
-| Kiểm tra token sai | cloudflared thoát → service `0/1` → `deploy.sh` báo deploy **thất bại** (đúng: có thứ không lên thì deploy phải đỏ) |
+| Kiểm tra token sai | **Đo thật 2026-10-16 (khác dự đoán ban đầu):** token đúng định dạng nhưng sai thì cloudflared **không thoát** — nó ghi `ERR Register tunnel error ... "Failed to get tunnel"` rồi retry mãi, service vẫn `1/1` và `deploy.sh` vẫn **xanh**. Chỉ token **sai định dạng** mới làm container thoát (`0/1` → deploy đỏ). Hệ quả: domain có thể chết công khai (502/1033) trong khi hệ thống báo thành công ⇒ phải xem log connector. Không tự động hoá được bằng healthcheck: image là distroless nên trong container không có `wget`/`curl` để gọi endpoint `/ready` |
 
 Lưu ý vận hành: domain công khai **chỉ sống khi VM manager đang chạy**; token nằm trong lệnh
 cài đặt trên dashboard, ai có token cũng chạy được tunnel nên không dán vào chat/log.
@@ -310,7 +310,7 @@ vẫn chạy và link trong mail trỏ về domain công khai.
 | Agent không nối được qua overlay (`tasks.agent:9001`) | Publish 9001 bằng routing mesh + UFW allow 9001 (đúng bản stack chính thức của Portainer). Kiểm bằng UI: nếu chỉ thấy node manager là agent chưa nối |
 | `--prune` xoá nhầm service | Chỉ xoá service **không có trong file stack** của chính stack `capstone`; muốn chắc chắn thì xem diff của `docker stack services` trước/sau trong lần deploy đầu |
 | Ảnh hưởng của `real_ip`: mọi peer trong `10.0.0.0/8` đều được tin, kể cả gateway của routing mesh (`10.0.0.2`) nên client trong lab tự gửi `CF-Connecting-IP` sẽ được tôn trọng | Chấp nhận trong lab (host-only, một người dùng); đường công khai không bị vì Cloudflare ghi header đó. Muốn siết: ghim subnet overlay rồi đổi `set_real_ip_from` — phải tạo lại network của cụm đang chạy, để dành |
-| Token dán sai | Service `0/1` → `deploy.sh` đỏ; sửa `infra/.env` + provision, không cần đụng swarm |
+| Token dán sai (đúng định dạng) | Service vẫn `1/1` và deploy vẫn xanh ⇒ **không im lặng ở chỗ khác**: triệu chứng là domain 502/1033, xác nhận bằng `docker logs` connector (`Failed to get tunnel`). Sửa `infra/.env` + provision; không cần đụng swarm. Ghi rõ vào mục xử lý sự cố của `infra/README.md` (Task 7) |
 | Mật khẩu Portainer sinh ra nhưng chưa dùng lần nào | Nếu xoá volume `portainer_data` mà secret vẫn còn, Portainer tạo lại admin với **đúng** mật khẩu đó (`--admin-password-file` được đọc lại khi chưa có user) |
 
 ## 12. Ngoài phạm vi (nhắc lại để không ai chờ đợi)

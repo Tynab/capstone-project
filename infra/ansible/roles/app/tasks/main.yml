@@ -60,6 +60,10 @@
     # đều nằm trong group docker và cần đọc file này để deploy.
     group: docker
     mode: "0640"
+  # Mọi thứ trong .env đều được nội suy vào file stack (token tunnel, URL, image...),
+  # nên .env đổi là phải deploy lại. Thiếu notify ở đây thì riêng việc dán token vào
+  # infra/.env sẽ KHÔNG làm service cloudflared xuất hiện (đã gặp thật).
+  notify: deploy stack
 
 - name: Ghi deploy.sh
   template:
