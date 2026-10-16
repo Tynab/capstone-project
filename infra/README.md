@@ -48,12 +48,20 @@ và chỉ cần đúng một lệnh `vagrant up`.
 # Lần đầu (cài thiếu gì tự cài, sẽ hiện UAC vài lần)
 infra\setup.cmd
 
+# Sau khi tắt/mở lại máy Windows — chỉ BẬT LẠI 2 VM đã dựng (không cài, không provision)
+infra\start.cmd
+
 # Những lần sau (cập nhật cấu hình hạ tầng)
 cd infra && vagrant provision --provision-with ansible
 
 # Dựng lại từ đầu — XOÁ CẢ DỮ LIỆU MONGODB trong VM
 infra\destroy.cmd
 ```
+
+`start.cmd` chỉ chạy `vagrant up` rồi chờ app trả lời (tối đa 3 phút) — swarm giữ nguyên trạng
+thái trên đĩa nên các service tự lên lại, GitHub runner là systemd enabled nên cũng tự chạy.
+Máy Windows khởi động lại thì VM **không** tự bật; phải chạy script này (hoặc bật VirtualBox
+cho từng VM bằng tay).
 
 `setup.cmd` làm tuần tự: kiểm/cài VirtualBox + Vagrant → cảnh báo Hyper-V/VT-x →
 thêm rule firewall cho mạng host-only → sinh khoá SSH lab (`infra/.ssh/lab_key`) →

@@ -59,6 +59,7 @@ Công khai qua **Cloudflare Tunnel** (bật/gỡ bằng một biến trong `infr
 
 ```bash
 infra\setup.cmd          # cài VirtualBox/Vagrant nếu thiếu, dựng 2 VM, deploy stack
+infra\start.cmd          # sau khi tắt/mở lại máy Windows: chỉ bật lại 2 VM đã dựng
 ```
 
 Sau khi xong: app ở <http://192.168.56.10>, Grafana ở <http://192.168.56.10:3001>.
