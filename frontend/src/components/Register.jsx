@@ -6,6 +6,7 @@ import { register } from "../api/authApi";
 import { getErrorMessage } from "../utils/getErrorMessage";
 import { saveToken } from "../utils/authStorage";
 import { AUTH_ACTIONS } from "../constants";
+import registerIllustration from "../assets/register-illustration.png";
 
 function Register() {
   const [formData, setFormData] = useState({});
@@ -42,9 +43,17 @@ function Register() {
         <div className="container px-6 py-12 h-full">
           <div className="flex justify-center items-center flex-wrap h-full g-6 text-gray-800">
             <div className="md:w-8/12 lg:w-6/12 mb-12 md:mb-0">
+              {/* Ảnh tự host thay cho bản hotlink pngtree.com: bản hotlink trả 403
+                  khi có Referer (chặn hotlink) nên trước đây trang đăng ký luôn
+                  hiện ảnh vỡ. Đã tải bản gốc về, thu nhỏ 2500x2500 -> 625x625
+                  bằng cách LẤY MẪU ĐIỂM và giữ nguyên bảng màu (596KB -> 70KB).
+                  width/height khai đúng tỉ lệ để trình duyệt giữ chỗ trước khi ảnh
+                  về, không nhảy bố cục (xem ghi chú ở Login.jsx). */}
               <img
-                src="https://png.pngtree.com/png-clipart/20240502/original/pngtree-flat-design-concepts-online-learning-with-online-teacher-in-computer-png-image_14991353.png"
-                className="w-full"
+                src={registerIllustration}
+                width="625"
+                height="625"
+                className="w-full h-auto"
                 alt="Illustration of someone setting up a new account"
               />
             </div>

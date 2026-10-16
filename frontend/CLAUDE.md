@@ -72,6 +72,7 @@ Lỗi luôn đọc qua [getErrorMessage](src/utils/getErrorMessage.js) — đọ
 
 - Styling: Tailwind viết trong `className`, cộng CSS thường — `src/App.css` (import ở `App.js` nên là global) và `src/styles/*.css`.
 - Quy ước thư mục: mọi component là **file phẳng** trong `src/components/` (PascalCase, `.jsx`); chỉ nhóm con mới có thư mục (`common/`, `icons/`, chữ thường). CSS để riêng ở `src/styles/`. Giữ đúng quy ước này khi thêm component mới.
+- Ảnh tĩnh để ở `src/assets/` rồi `import` vào component (webpack băm tên file nên không lo cache). **Không hotlink ảnh từ site ngoài**: ảnh minh hoạ trang đăng ký từng nằm trên `pngtree.com` và luôn trả 403 vì site đó chặn hotlink — nay là `src/assets/register-illustration.png` (đã thu nhỏ 2500x2500 → 625x625, 596KB → 70KB). Ảnh trang đăng nhập vẫn lấy từ `mdbcdn.b-cdn.net`; nếu CDN đó chết thì tải về `src/assets/` theo đúng cách này.
 - [FormAlert](src/components/common/FormAlert.jsx) là component dùng chung hiển thị lỗi/thành công của form (lỗi của từng task trong `Task.jsx` tự render `p role="alert"`, `ErrorBoundary` có màn hình lỗi riêng); [DeleteIcon](src/components/icons/DeleteIcon.jsx) là SVG nội bộ (trước đây là `@mui/icons-material`, kéo cả MUI + emotion vào bundle chỉ để render 1 icon).
 - [formatRelativeTime](src/utils/formatRelativeTime.js) dùng `Intl.RelativeTimeFormat` thay cho `moment` (~60KB minified, ~19KB gzip cho một hàm).
 - Nút nào gửi request đều phải `disabled` trong lúc chờ, và mọi input phải có tên truy cập được: `<label>` thật (form ẩn bằng `sr-only` để giữ nguyên thiết kế, `CreateTask` dùng label hiển thị) hoặc `aria-label` như checkbox trong `Task.jsx`.
@@ -98,5 +99,10 @@ công cụ build/dev-server (`webpack-dev-server`, `http-proxy-middleware`, `svg
 thì phải bỏ CRA (chuyển sang Vite), là việc riêng, không gộp vào đợt vá bảo mật.
 
 Mỗi lần thêm/sửa `overrides` phải chạy đủ: `npm run build` (bắt lỗi webpack/postcss), `CI=true npm test`,
-`cd ../e2e && npm run test:browser`. Tuyệt đối không chạy `npm audit fix --force`: nó "vá" bằng cách hạ
-`react-scripts` xuống `0.0.0` và làm chết cả `npm start` lẫn `npm run build`.
+`cd ../e2e && npm run test:browser`, **và `npm ci --dry-run`** — CI dùng `npm ci` nên lockfile lệch
+package.json là job test đỏ ngay từ bước cài dependency. Bài học đã trả giá: xoá `package-lock.json` để
+sinh lại từ đầu làm npm chọn `typescript@7` (không thoả peer `typescript@4.9.5` của `@typescript-eslint`),
+`npm ci` báo "Invalid: lock file's typescript@7.0.2 does not satisfy typescript@4.9.5". Vì vậy hãy sửa
+lockfile theo kiểu TĂNG DẦN (`npm install` trên lock cũ) và kiểm bằng `npm ci --dry-run`, đừng xoá lock
+để dựng lại. Tuyệt đối không chạy `npm audit fix --force`: nó "vá" bằng cách hạ `react-scripts` xuống
+`0.0.0` và làm chết cả `npm start` lẫn `npm run build`.

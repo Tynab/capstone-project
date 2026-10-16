@@ -178,8 +178,10 @@ try {
         !(await hasText('Task tu trinh duyet')))
 
     // ------------------------------------------------------------- lỗi console
-    // Tách lỗi của ứng dụng khỏi lỗi tài nguyên bên thứ ba: ảnh trong trang đăng ký
-    // nằm trên pngtree.com và trả 403 — hỏng mỹ quan, không phải lỗi app.
+    // Tách lỗi của ứng dụng khỏi lỗi tài nguyên bên thứ ba. Ảnh trang đăng ký đã
+    // được tự host (trước là pngtree.com trả 403 do chặn hotlink), nhưng ảnh trang
+    // ĐĂNG NHẬP vẫn lấy từ mdbcdn.b-cdn.net — CDN ngoài, hỏng thì là hỏng mỹ quan
+    // chứ không phải lỗi app, nên vẫn phải tách riêng và không tính là fail.
     const isExternal = (e) => /https?:\/\/(?!localhost|127\.0\.0\.1)/.test(e)
     const external = consoleErrors.filter(isExternal)
     const realErrors = consoleErrors.filter((e) =>
