@@ -1,0 +1,22 @@
+# Chuẩn định dạng tối thiểu cho cả repo, để editor nào cũng ghi file giống nhau.
+# Quy tắc EOL ở đây phải khớp với .gitattributes (file chạy trong Linux dùng LF,
+# file của Windows dùng CRLF) — lệch nhau là nguồn lỗi "bad interpreter: /bin/bash^M".
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cmd,bat,ps1}]
+end_of_line = crlf
+
+[*.md]
+# Markdown dùng hai dấu cách cuối dòng để xuống dòng — không được cắt.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab

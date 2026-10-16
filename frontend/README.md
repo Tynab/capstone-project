@@ -1,70 +1,57 @@
-# Getting Started with Create React App
+# Frontend — ứng dụng todo (React)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Giao diện todo: đăng ký/đăng nhập, thêm và quản lý task, quên/đặt lại mật khẩu.
+Create React App 5 + React 18 + Tailwind, JavaScript thuần (không TypeScript).
 
-## Available Scripts
+## Chạy
 
-In the project directory, you can run:
+```bash
+npm install
+npm start        # http://localhost:3000
+```
 
-### `npm start`
+Cần backend đang chạy (mặc định `http://localhost:8000/api`) — xem [../backend/README.md](../backend/README.md).
+Muốn trỏ sang API khác thì đặt `REACT_APP_API_URL` trong `.env` (mẫu ở [.env.example](.env.example)).
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+> `REACT_APP_*` được CRA nhúng vào bundle **lúc build**, không phải lúc chạy — đổi giá trị
+> thì phải build lại.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Cấu trúc
 
-### `npm test`
+```
+src/
+├─ api/         lớp gọi HTTP duy nhất (client.js + authApi/taskApi) — component KHÔNG gọi axios trực tiếp
+├─ components/  component dạng file phẳng (PascalCase .jsx); nhóm con: common/, icons/
+├─ context/     2 context: TokenContext (user + token), TaskContext (tasks)
+├─ reducer/     3 reducer thuần cho tasks / token / user
+├─ styles/      CSS thường (Tailwind viết trong className)
+└─ utils/       đọc-ghi token an toàn, format thời gian, đọc thông báo lỗi
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+`App.js` là app shell: giữ state dùng chung, khai báo toàn bộ route, và tự nạp
+`/user/getUser` + `/task/getTask` mỗi khi token đổi.
 
-### `npm run build`
+## Build & deploy
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```bash
+npm run build    # sản phẩm vào build/ (bị .gitignore chặn)
+npm run format   # prettier cho src/
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Khi deploy, frontend được đóng gói bằng [Dockerfile](Dockerfile): build CRA rồi phục vụ
+bằng nginx ([nginx.conf](nginx.conf)). nginx lo hai việc quan trọng:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+1. **SPA fallback** — mọi đường dẫn không phải file tĩnh đều trả `index.html`, nếu không
+   F5 ở `/active` hay `/resetPassword` sẽ 404.
+2. **Proxy `/api` sang backend** — cùng origin nên không cần cấu hình CORS, và không bị
+   chặn mixed content khi trang chạy https.
 
-### `npm run eject`
+Image do CI build và deploy lên swarm — xem [../infra/README.md](../infra/README.md).
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Test
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+`npm test` mở jest ở chế độ watch; **frontend không có unit test** (cố ý — phần này được
+kiểm bằng test e2e chạy trên Chrome thật, ở [../e2e](../e2e/README.md)). Chạy một lần:
+`CI=true npm test`.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Chi tiết kiến trúc, các lỗi đã từng xảy ra và quy ước trong mã: [CLAUDE.md](CLAUDE.md).

@@ -1,28 +1,50 @@
-# Dependencies
-node_modules/
+# =============================================================================
+# .gitignore — dự án todo (backend Express · frontend React · e2e · infra)
+# Nguyên tắc: không bao giờ commit secret, thư mục phụ thuộc, hay sản phẩm build.
+# =============================================================================
 
-# Biến môi trường THẬT — chỉ commit các file .env.example.
-# backend/.env chứa JWT_SECRET thật và .env không được lọt vào lịch sử git.
+# ---------------------------------------------------------------- phụ thuộc
+node_modules/
+.pnp
+.pnp.js
+
+# ------------------------------------------------------ biến môi trường THẬT
+# Chỉ commit các file .env.example. backend/.env chứa JWT_SECRET thật nên tuyệt
+# đối không được lọt vào lịch sử git — kể cả sau khi đã xoá file.
 .env
 .env.local
 .env.*.local
 backend/.env
 frontend/.env
 
-# Build output
+# ------------------------------------------------------------- sản phẩm build
 frontend/build/
+dist/
+coverage/
 
-# Hệ điều hành / editor
-.DS_Store
-Thumbs.db
-
-# Log
+# ---------------------------------------------------------------------- log
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Khoá SSH của lab (sinh bởi infra/setup.ps1, không bao giờ commit)
+# --------------------------------------------------- hạ tầng lab (infra/)
+# Khoá SSH do infra/setup.ps1 sinh ra, không bao giờ commit.
 infra/.ssh/
-# Vagrant sinh trong quá trình chạy
+# Trạng thái máy ảo và file tạm của Vagrant/Ansible.
 .vagrant/
+*.retry
+# Thư mục làm việc tạm của các phiên agent.
+.superpowers/
+
+# ------------------------------------------------------- hệ điều hành
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------ editor / IDE
+.vscode/
+.idea/
+*.swp
+*~

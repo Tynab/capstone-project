@@ -1,23 +1,22 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# .gitignore cục bộ của frontend — lưới an toàn nếu thư mục này được tách ra khỏi repo.
+# (Ở repo đầy đủ, .gitignore gốc đã chặn các mục dưới đây.)
 
-# dependencies
+# phụ thuộc
 /node_modules
 /.pnp
 .pnp.js
 
-# testing
+# sản phẩm build và coverage
+/build
 /coverage
 
-# production
-/build
+# biến môi trường — .env chứa cấu hình riêng của máy, không commit
+.env
+.env.*
+!.env.example
 
-# misc
-.DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
+# log và file của hệ điều hành
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.DS_Store

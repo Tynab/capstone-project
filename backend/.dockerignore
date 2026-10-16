@@ -1,4 +1,21 @@
+# Những gì KHÔNG đưa vào build context của image backend.
+# node_modules bị loại vì image cài lại bằng `npm ci` bên trong (đúng phiên bản
+# theo package-lock, không phụ thuộc thư mục trên máy dev).
 node_modules
 npm-debug.log*
+yarn-error.log*
+
+# Secret không bao giờ được nằm trong image — chỉ .env.example là mẫu.
 .env
-*.log
+.env.*
+!.env.example
+
+# Không cần cho lúc chạy: test, tài liệu, cấu hình của công cụ khác.
+*.test.js
+coverage
+README.md
+CLAUDE.md
+.prettierrc
+Dockerfile
+.dockerignore
+.git

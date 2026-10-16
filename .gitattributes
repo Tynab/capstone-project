@@ -1,11 +1,42 @@
-# Auto detect text files and perform LF normalization
+# =============================================================================
+# .gitattributes — chuẩn hoá EOL và đánh dấu loại file cho cả repo.
+#
+# Vì sao cần: repo được phát triển trên Windows nhưng script và cấu hình hạ tầng
+# chạy trong VM Linux. Nếu để lẫn CRLF, script .sh và playbook Ansible sẽ lỗi
+# ngay trong VM (bash báo "bad interpreter: /bin/bash^M").
+# =============================================================================
+
+# Mặc định: git tự nhận dạng text, chuẩn hoá về LF trong repo.
 * text=auto
 
-# Script/Linux chạy trong VM: bắt buộc LF
-infra/**/*.sh   text eol=lf
-infra/**/*.yml  text eol=lf
-infra/**/*.j2   text eol=lf
-infra/**/*.ini  text eol=lf
-infra/Vagrantfile text eol=lf
-# File .cmd phải CRLF
-infra/*.cmd text eol=crlf
+# ------------------------------------------------ file chạy trong Linux (LF)
+infra/**/*.sh      text eol=lf
+infra/**/*.yml     text eol=lf
+infra/**/*.yaml    text eol=lf
+infra/**/*.j2      text eol=lf
+infra/**/*.ini     text eol=lf
+infra/Vagrantfile  text eol=lf
+.github/**/*.yml   text eol=lf
+
+# --------------------------------------------- file của Windows (CRLF)
+infra/*.cmd        text eol=crlf
+infra/*.bat        text eol=crlf
+# PowerShell chấp nhận cả hai, nhưng CRLF là quy ước trên Windows.
+infra/*.ps1        text eol=crlf
+
+# ------------------------------------------------------------- file nhị phân
+# Không để git "chuẩn hoá" hay trộn nội dung của các file này.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.woff   binary
+*.woff2  binary
+*.pdf    binary
+
+# ---------------------------------------------------------- lockfile (generated)
+# Không tính vào thống kê ngôn ngữ và không hiển thị diff — chúng do npm sinh ra,
+# review bằng cách xem package.json thay đổi gì.
+package-lock.json  -diff linguist-generated
+yarn.lock          -diff linguist-generated

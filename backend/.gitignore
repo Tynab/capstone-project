@@ -1,3 +1,8 @@
+# .gitignore cục bộ của backend — lưới an toàn nếu thư mục này được tách ra khỏi repo.
+# (Ở repo đầy đủ, .gitignore gốc đã chặn các mục dưới đây.)
 node_modules/
 .env
+.env.*
+!.env.example
 *.log
+coverage/
