@@ -96,13 +96,21 @@ node-forge, sprintf-js…) đã biến mất, kéo theo gần hết cảnh báo.
 lý do cụ thể và đo được — mỗi lần thêm phải chạy đủ `npm run build`, `npm test`, `npm run lint`, và
 `cd ../e2e && npm run test:browser`.
 
-Trạng thái đo được ngay sau migration (2026-10-16): Dependabot còn **1 cảnh báo** —
-`postcss-selector-parser` [medium], cần vá ở 7.1.6 nhưng `tailwindcss` 3 ghim `^6`
-(qua `postcss-nested`). Đây là nhóm **chỉ hết khi đổi major của công cụ lớn**: muốn về
-0 cảnh báo thì phải lên Tailwind 4 (viết lại tầng style: config chuyển vào CSS, plugin
-PostCSS đổi tên, một số utility bị bỏ) — là việc riêng, và cần soi lại giao diện bằng
-mắt vì test tự động không so từng pixel. Các gói kiểu `braces`/`node-forge`/`sprintf-js`
-(cảnh báo không có bản vá ở bất kỳ phiên bản nào) đã rời khỏi cây dependency sau khi bỏ CRA.
+Trạng thái cuối (2026-10-16): **0 cảnh báo Dependabot**. Cảnh báo cuối cùng là
+`postcss-selector-parser` [medium] — cần vá ở 7.1.6 nhưng `tailwindcss` 3 ghim `^6`
+(trực tiếp, và qua `postcss-nested`). Cách xử lý: ghim lại bằng đúng một dòng
+`"overrides": { "postcss-selector-parser": "^7.1.6" }` (đây là `overrides` DUY NHẤT còn
+lại trong repo).
+
+Vì sao dám ghim một major ngoài dải mà tailwind khai báo: đã **chứng minh hành vi không
+đổi** bằng cách so CSS sinh ra từng byte — `sha256` của `dist/assets/*.css` trước và sau
+khi ghim GIỐNG HỆT (cùng 14.190 byte), cộng thêm `npm test` 47/47, `npm run lint` sạch,
+e2e API 49/49, e2e trình duyệt 14/14 và soi ảnh chụp giao diện thật. Nếu sau này có
+người thêm CSS dùng cú pháp nesting/selector phức tạp thì phải làm lại phép so này —
+đó là điều kiện để override còn đứng vững, không phải "cứ để thế là xong".
+
+Các gói kiểu `braces`/`node-forge`/`sprintf-js` (cảnh báo không có bản vá ở bất kỳ phiên
+bản nào) đã rời khỏi cây dependency sau khi bỏ CRA.
 
 **Luôn kiểm bằng `npm ci --dry-run` sau mỗi lần sửa lockfile hoặc `package.json`** — CI dùng `npm ci`
 (CNpm của Node 20 = npm 10) nên lockfile lệch là job test đỏ ngay từ bước cài dependency, trước cả khi
