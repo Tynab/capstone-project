@@ -6,6 +6,9 @@ dev server + Chrome thật.
 
 ## Chạy
 
+Cả hai tầng đều chạy tự động trên GitHub Actions ở job `test` (`.github/workflows/ci-cd.yml`,
+dùng Chrome có sẵn trên runner). Lệnh dưới đây để chạy tại máy.
+
 ```bash
 cd e2e
 npm install          # lần đầu tải binary mongod (~80MB), sau đó dùng lại cache

@@ -92,6 +92,7 @@ Cách trên chạy một container `mongo:6` tạm trong overlay network và tr�
 | Service `0/1` hoặc `0/2` | Thiếu RAM/CPU, kéo image lỗi, hoặc constraint không khớp node | `docker service ps --no-trunc <service>` xem cột `ERROR` |
 | Job `deploy` trên GitHub đứng ở `queued` mãi | Runner offline (VM tắt). **`timeout-minutes` KHÔNG cứu ca này** — nó chỉ đếm từ lúc job bắt đầu chạy, còn job đang chờ runner thì GitHub chỉ tự huỷ sau ~24h | `gh api repos/Tynab/capstone-project/actions/runners` xem runner; dựng lại VM bằng `infra\setup.cmd`, hoặc huỷ tay `gh run cancel <id>` |
 | F5 ở `/active` trả 404 | Thiếu SPA fallback trong nginx | Kiểm `frontend/nginx.conf` rồi build lại image |
+| Deploy báo lỗi "service KHÔNG chạy đúng ảnh được yêu cầu" | Swarm đã rollback: task mới bị coi là hỏng trước khi kịp healthy | Kiểm `docker service inspect <svc> --format '{{json .UpdateStatus}}'`; `update_config.monitor` phải LỚN HƠN `start-period` + `interval` của healthcheck (đang là 45s) |
 | Job `deploy` lỗi `Permission denied` (exit 126) | `/opt/capstone` hoặc `.env` không cho user `ghrunner` đi qua/đọc | Role `app` đặt thư mục 0755 và `.env` 0640 group `docker`; kiểm bằng `sudo -u ghrunner sh -c '. /opt/capstone/.env'` |
 | Runner không đăng ký được: `minimum runner version ... is now X` | GitHub chặn runner cũ đăng ký | Role `runner` để `runner_version` rỗng = tự lấy bản mới nhất; đừng ghim cứng số phiên bản |
 
