@@ -355,8 +355,9 @@ Muốn chuyển sang private:
   thành `infra\cloudflare-jsd.cmd` (mặc định chỉ đọc, `-Apply` mới đổi, token `CF_API_TOKEN` trong
   `infra/.env` đã bị gitignore). Nếu token chỉ có `Bot Management: Edit` thì **điền thêm
   `CF_ZONE_ID`** vào `infra/.env` (Zone ID nằm ở Overview → thẻ "API"): tra zone theo tên cần thêm
-  quyền `Zone: Read`, mà thiếu quyền đó Cloudflare trả **danh sách rỗng** (HTTP 200) chứ không báo
-  lỗi — rất dễ đọc sai thành "token sai". JSD là setting mức **zone** — nó chèn vào cả
+  quyền `Zone: Read`, và thiếu quyền đó Cloudflare **thường trả danh sách rỗng** (HTTP 200, không
+  báo lỗi — dễ đọc sai thành "token sai"), còn một số tài khoản thì nhận **403 "... to list zones"**;
+  cả hai cùng nguyên nhân. Đường `CF_ZONE_ID` không cần quyền nào. JSD là setting mức **zone** — nó chèn vào cả
   `portfolio.yamiannephilim.com`, nên tắt là tắt cho mọi hostname trong zone; đổi lại, trên zone này
   không còn consumer nào dùng tín hiệu JSD (Bot Fight Mode tắt, custom rules 0/5, managed rules chưa
   tạo) nên nó vốn chỉ là script fingerprint không ai tiêu thụ.
@@ -366,6 +367,11 @@ Muốn chuyển sang private:
   2026-10-16, mọi request mang `CF-Connecting-IP` qua domain đều bị Cloudflare trả **403** và không
   tới được nginx. Khi **dựng lại cụm**: tạo overlay `capstone` với `--subnet` cố định trong role
   `swarm_manager` rồi đổi `set_real_ip_from` về đúng subnet đó.
+- **`infra/.env` không phải chỗ cách ly secret khỏi VM**: file này (token tunnel, token API
+  Cloudflare) nằm trong repo, mà Vagrantfile mount **nguyên repo** vào `/vagrant` của cả 2 VM để
+  Ansible đọc playbook và để build image tại chỗ — nên `/vagrant/infra/.env` đọc được từ trong VM.
+  Ansible KHÔNG chép nội dung file này vào `/opt/capstone/.env` (chỉ 2 biến được truyền qua
+  `extra_vars`), nhưng đừng vì thế mà coi nó là nơi cất token kín với VM.
 - Windows Firewall cần rule cho mạng host-only với các cổng 80, 9000, 9090, 3001, 8025 —
   `infra\setup.cmd` tự thêm (rule cũ thiếu cổng 9000 sẽ được tạo lại).
 - `TRUST_PROXY=1` bắt buộc vì backend nằm sau nginx — thiếu nó thì rate limit

@@ -71,13 +71,29 @@ function Get-EnvValue([string]$Name) {
     if (Test-Path $envFile) {
         foreach ($line in (Get-Content $envFile)) {
             if ($line -match ("^\s*" + [regex]::Escape($Name) + "\s*=\s*(.+)$")) {
-                # Người dùng hay dán kèm nháy bao ngoài -> cắt cho chắc.
-                $val = $Matches[1].Trim().Trim('"').Trim("'")
+                # Cắt comment nội dòng ("CF_ZONE_ID=abc  # ghi chú") TRƯỚC khi trim: không cắt
+                # thì zone id dính cả phần chú thích và API trả 404 rất khó hiểu (đã tái hiện
+                # bằng mock: zone id thành "zone-from-env # ghi chu noi dong").
+                # Token của Cloudflare là base64url (không có '#') nên cắt ở đây là an toàn.
+                $val = ($Matches[1] -replace '\s+#.*$', '').Trim().Trim('"').Trim("'")
                 if ($val) { return $val }
             }
         }
     }
     return $null
+}
+
+# Chuẩn hoá giá trị boolean đọc từ JSON API. Cần hàm riêng vì cái bẫy thật của PowerShell 5.1:
+# `[bool]"false"` trả về **True** (chuỗi khác rỗng), nên nếu Cloudflare (hoặc một proxy đứng
+# giữa) trả về chuỗi "false" thay vì boolean thật thì script sẽ gửi PUT sai kiểu và kết luận
+# ngược ở bước xác nhận — đã tái hiện bằng mock. Chấp nhận cả chuỗi đúng kiểu JSON.
+function To-Bool($v) {
+    if ($v -is [bool]) { return $v }
+    if ($v -is [string]) {
+        if ($v.Trim().ToLower() -eq "true")  { return $true }
+        if ($v.Trim().ToLower() -eq "false") { return $false }
+    }
+    return $null   # không phải boolean thật -> để chỗ gọi tự xử lý, KHÔNG đoán
 }
 
 function Resolve-Token {
@@ -129,8 +145,12 @@ function Invoke-CfApi {
         Write-Host "LOI goi Cloudflare API: $Method $Path$status" -ForegroundColor Red
         Write-Host "  $($_.Exception.Message)"
         if ($detail) { Write-Host "  Cloudflare tra ve: $detail" }
-        Write-Host "  Doc loi: code 10000 = token sai/het han - 403 = token thieu quyen (can Bot Management:Edit)" -ForegroundColor Yellow
-        Write-Host "           'not allowed'/'feature not available' o tren = API tu choi tat khi Bot Fight Mode dang bat." -ForegroundColor Yellow
+        Write-Host "  Doc loi:" -ForegroundColor Yellow
+        Write-Host "    - 10000 'Authentication error'      = token sai/het han (kiem lai CF_API_TOKEN)." -ForegroundColor Yellow
+        Write-Host "    - 403 noi 'list zones'              = token thieu quyen Zone -> Zone -> Read. KHONG can sua token:" -ForegroundColor Yellow
+        Write-Host "      dung -ZoneId <id> hoac dien CF_ZONE_ID vao infra\.env (Zone ID o Overview -> the API)." -ForegroundColor Yellow
+        Write-Host "    - 403 khac                          = token thieu quyen cho chinh endpoint (can Bot Management -> Edit)." -ForegroundColor Yellow
+        Write-Host "    - 'not allowed'/'feature not available' = API tu choi tat khi Bot Fight Mode dang bat." -ForegroundColor Yellow
         exit 1
     }
 }
@@ -173,9 +193,11 @@ if ($Apply) {
 # 1) Zone id
 # Thứ tự: -ZoneId -> CF_ZONE_ID (biến môi trường hoặc infra\.env) -> tra API theo tên.
 # Đường CF_ZONE_ID không cần thêm quyền nào, và đó là lý do nó tồn tại: GET /zones?name=...
-# cần quyền Zone -> Zone -> Read, mà token chỉ có Bot Management -> Edit thì Cloudflare lọc
-# danh sách theo quyền và trả `result: []` (HTTP 200, success: true) — KHÔNG phải lỗi xác
-# thực. Đã gặp thật 2026-10-17: script cũ tưởng đó là "token sai" nên báo sai hướng.
+# cần quyền Zone -> Zone -> Read. Token thiếu quyền đó thì Cloudflare **thường** trả
+# `result: []` (HTTP 200, success: true, không phải lỗi xác thực) — nhưng có tài khoản lại
+# nhận 403 tường minh "requires permission ... to list zones" (cộng đồng ghi nhận cả hai).
+# Đã gặp thật 2026-10-17 với ca trả rỗng: script cũ tưởng đó là "token sai" nên báo sai hướng.
+# Ca 403 rơi vào nhánh lỗi của Invoke-CfApi — dặn người đọc ở dòng gợi ý dưới đó.
 $zoneId = $ZoneId
 $zoneNguon = "-ZoneId"
 if (-not $zoneId) {
@@ -188,7 +210,8 @@ if (-not $zoneId) {
         Write-Host ""
         Write-Host "Khong tra duoc zone '$Zone' bang API." -ForegroundColor Red
         Write-Host "  Token VAN dung (API khong bao loi xac thuc) — nguyen nhan la thieu mot trong:"
-        Write-Host "    - quyen Zone -> Zone -> Read (thieu quyen thi Cloudflare tra danh sach RONG, khong loi),"
+        Write-Host "    - quyen Zone -> Zone -> Read (thieu quyen thi Cloudflare tra danh sach RONG;"
+        Write-Host "      mot so tai khoan lai nhan 403 '... to list zones', ca hai deu cung nguyen nhan),"
         Write-Host "    - Zone Resources cua token khong bao gom zone nay, hoac token thuoc tai khoan khac."
         Write-Host "  Chon mot trong hai duong sau, ca hai deu khong phai sua gi them:"
         Write-Host "   A. Khong doi token — truyen thang Zone ID:"
@@ -207,18 +230,34 @@ Write-Host ""
 
 # 2) Trạng thái hiện tại (GET — nhánh này không đổi gì)
 $cur = (Invoke-CfApi -Method "Get" -Path "/zones/$zoneId/bot_management").result
+# Phản hồi phải là một OBJECT có field. Bản trước không kiểm: result thiếu, null hay mảng rỗng
+# đều rơi vào nhánh "không có field enable_js -> không làm gì" và exit 0 — tức biến một phản hồi
+# hỏng thành "đã kiểm tra, không có việc gì", trong khi thực tế chưa hề thấy giá trị enable_js
+# (đã tái hiện bằng mock). Giờ coi đây là bất thường: in nguyên văn phản hồi rồi exit 1.
+$laObject = ($null -ne $cur) -and ($cur -isnot [array]) -and (@($cur.PSObject.Properties).Count -gt 0)
+if (-not $laObject) {
+    Write-Host ""
+    Write-Warning "Phan hoi bot_management khong phai object co field -> khong ket luan duoc gi."
+    Write-Host ("  Raw: " + (($cur | ConvertTo-Json -Compress -Depth 4)))
+    exit 1
+}
 $curMap = ConvertTo-FieldMap $cur
 Write-Host "--- Trang thai bot_management hien tai ---"
 foreach ($k in ($curMap.Keys | Sort-Object)) { Write-Host ("  {0,-28} = {1}" -f $k, $curMap[$k]) }
 Write-Host ""
 
 $hasJsd = $curMap.ContainsKey("enable_js")
-$jsdOn = if ($hasJsd) { [bool]$curMap["enable_js"] } else { $null }
-$fightOn = $curMap.ContainsKey("fight_mode") -and [bool]$curMap["fight_mode"]
+$jsdOn = if ($hasJsd) { To-Bool $curMap["enable_js"] } else { $null }
+$fightOn = ($curMap.ContainsKey("fight_mode") -and (To-Bool $curMap["fight_mode"]) -eq $true)
 
 if (-not $hasJsd) {
     Write-Warning "Phan hoi khong co field enable_js -> zone nay khong co JavaScript Detections. Khong lam gi."
     exit 0
+}
+if ($null -eq $jsdOn) {
+    # Có field nhưng không phải boolean (ví dụ chuỗi lạ) -> không đoán, dừng lại.
+    Write-Warning "enable_js khong phai true/false (gia tri doc duoc: '$($curMap["enable_js"])') -> dung lai, khong doan."
+    exit 1
 }
 if (-not $jsdOn) {
     Write-Host "[OK] enable_js dang TAT - khong con gi de lam." -ForegroundColor Green
@@ -236,8 +275,12 @@ if (-not $Apply) {
 }
 
 # 3) PUT — chỉ tắt enable_js, giữ nguyên fight_mode đúng như đọc về
+# Chỉ đưa fight_mode vào body khi nó THỰC SỰ là boolean (đã chuẩn hoá): API trả null thì gửi
+# "fight_mode": null vừa vô nghĩa vừa có thể bị Cloudflare hiểu là đổi giá trị (đã tái hiện
+# bằng mock: body thành {"fight_mode":null,"enable_js":false}).
 $body = @{}
-if ($curMap.ContainsKey("fight_mode")) { $body["fight_mode"] = $curMap["fight_mode"] }
+$fm = if ($curMap.ContainsKey("fight_mode")) { To-Bool $curMap["fight_mode"] } else { $null }
+if ($null -ne $fm) { $body["fight_mode"] = $fm }
 $body["enable_js"] = $false
 Write-Host "--- PUT /zones/$zoneId/bot_management ---" -ForegroundColor Yellow
 Write-Host ("  body: " + ($body | ConvertTo-Json -Compress))
@@ -250,7 +293,8 @@ Write-Host ""
 Write-Host "--- Trang thai sau khi PUT ---"
 foreach ($k in ($afterMap.Keys | Sort-Object)) { Write-Host ("  {0,-28} = {1}" -f $k, $afterMap[$k]) }
 Write-Host ""
-if ($afterMap.ContainsKey("enable_js") -and -not [bool]$afterMap["enable_js"]) {
+$afterJsd = if ($afterMap.ContainsKey("enable_js")) { To-Bool $afterMap["enable_js"] } else { $null }
+if ($afterJsd -eq $false) {
     Write-Host "[OK] enable_js = false (da tat)" -ForegroundColor Green
 } else {
     Write-Warning "[X] enable_js van chua tat -> doc lai phan hoi o tren; neu fight_mode dang bat thi phai tat Bot Fight Mode truoc."
