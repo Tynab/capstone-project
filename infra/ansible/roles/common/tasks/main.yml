@@ -82,9 +82,28 @@
     # ở đây; thiếu hai cổng này thì Prometheus mất 4/7 target khi bật UFW.
     - { port: "9100", proto: tcp }
     - { port: "8080", proto: tcp }
-    # Portainer: chỉ dùng trong mạng host-only. Agent không cần cổng host nào —
-    # nó nói chuyện với Portainer qua overlay network (xem infra/stack/docker-stack.yml).
-    - { port: "9000", proto: tcp }
+    # Portainer KHÔNG nằm trong danh sách này: cổng 9000 cần giới hạn nguồn nên có
+    # hai task riêng ngay bên dưới. Agent của Portainer không cần cổng host nào —
+    # nó nói chuyện với Portainer qua overlay network.
+
+# Portainer là UI quản trị chạy HTTP thường, nên giới hạn hẳn nguồn về mạng host-only.
+# Phải XOÁ rule cũ (bản trước tạo với mọi nguồn) trước khi thêm rule có nguồn — UFW
+# không tự thay thế. Hai task này vẫn idempotent: module ufw tính `changed` bằng cách
+# so sánh danh sách rule trước/sau (đã đọc mã modules/ufw.py dòng 605), nên lần chạy
+# thứ hai không báo changed.
+- name: UFW — bỏ rule Portainer mở cho mọi nguồn (nếu còn)
+  ufw:
+    rule: allow
+    port: "9000"
+    proto: tcp
+    delete: yes
+
+- name: UFW — cho phép Portainer từ mạng host-only
+  ufw:
+    rule: allow
+    port: "9000"
+    proto: tcp
+    from: "192.168.56.0/24"
 
 - name: UFW — bật tường lửa
   ufw:
