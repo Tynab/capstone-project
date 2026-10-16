@@ -82,3 +82,21 @@ Lỗi luôn đọc qua [getErrorMessage](src/utils/getErrorMessage.js) — đọ
 - `BrowserRouter` đòi SPA fallback (rewrite mọi path về `index.html`), nếu không `/active`, `/resetPassword`… sẽ 404 khi F5. Trong lab, [nginx.conf](nginx.conf) làm việc đó bằng `try_files`. Build giả định phục vụ ở gốc domain (`package.json` không có `homepage`).
 - Link reset password do backend dựng từ `FRONTEND_URL` (mẫu ở `../backend/.env.example`; thiếu biến thì rơi về mặc định `https://todo-app-b96a5.web.app`) — đổi nơi deploy frontend thì phải sửa cả biến đó ở backend, không chỉ sửa repo này.
 - Backend chỉ cho CORS từ các origin trong `CORS_ORIGIN` (`.env` của backend). Đổi tên miền frontend thì phải thêm vào đó.
+
+## Phụ thuộc và cảnh báo bảo mật
+
+`react-scripts` là **5.0.1 — bản phát hành cuối cùng của CRA** và không còn được bảo trì: `npm audit` trả
+`fixAvailable = react-scripts@0.0.0` cho hàng loạt gói, tức npm không tìm được bản vá nào. Vì vậy các
+cảnh báo còn lại trong cây của nó chỉ ghim được bằng `overrides` trong `package.json`.
+
+Nguyên tắc đã áp dụng: **chỉ ghim trong cùng major** (bản vá do chính nhà phát hành phát hành cho nhánh
+đó). Sau khi ghim: `npm audit` của frontend không còn cảnh báo `critical` nào, và còn ~26 cặp
+(gói, advisory) — tất cả đòi nhảy major nên **cố ý để nguyên**, gồm ba gói chưa có bản vá ở bất kỳ
+phiên bản nào (`braces <= 3.0.3`, `node-forge <= 1.4.0`, `sprintf-js <= 1.1.3`). Nhóm này nằm trong
+công cụ build/dev-server (`webpack-dev-server`, `http-proxy-middleware`, `svgo 1.x`, `postcss 7` của
+`resolve-url-loader`, `uuid`, `react-router 6`) — **không vào bundle production**. Muốn sạch hoàn toàn
+thì phải bỏ CRA (chuyển sang Vite), là việc riêng, không gộp vào đợt vá bảo mật.
+
+Mỗi lần thêm/sửa `overrides` phải chạy đủ: `npm run build` (bắt lỗi webpack/postcss), `CI=true npm test`,
+`cd ../e2e && npm run test:browser`. Tuyệt đối không chạy `npm audit fix --force`: nó "vá" bằng cách hạ
+`react-scripts` xuống `0.0.0` và làm chết cả `npm start` lẫn `npm run build`.
