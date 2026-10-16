@@ -223,9 +223,13 @@ services:
     # KHÔNG cần socket. --admin-password-file đọc bản plaintext, CHỈ có tác dụng ở
     # lần tạo admin đầu tiên; các lần sau Portainer ghi log "instance already has an
     # administrator user defined" rồi bỏ qua (đã đối chiếu mã nguồn 2.45.2).
+    # Tên DNS phải là tasks.<tên service trong CHÍNH file này>. Stack chính thức của
+    # Portainer đặt service tên `agent` nên ở đó là `tasks.agent`; service của mình tên
+    # `portainer-agent` — viết `tasks.agent` sẽ NXDOMAIN, Portainer vẫn chạy nhưng UI
+    # hiện "No items available" (đã gặp thật, sửa ở đây).
     command:
       - -H
-      - tcp://tasks.agent:9001
+      - tcp://tasks.portainer-agent:9001
       - --tlsskipverify
       - --admin-password-file
       - /run/secrets/portainer_admin
