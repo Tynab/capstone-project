@@ -6,6 +6,13 @@ lab_worker_ip: "192.168.56.11"
 app_dir: /opt/capstone
 app_url: "http://192.168.56.10"
 
+# Cổng publish của lab (app + quản trị + giám sát) và các dải nguồn được coi là nội bộ.
+# Dùng cho luật DOCKER-USER — xem infra/ansible/roles/common/templates/docker-user-rules.sh.j2.
+# 10.0.0.0/8 là overlay network của swarm, 172.16.0.0/12 là docker_gwbridge: Prometheus
+# và blackbox-exporter nằm trong các dải này nên phải cho qua, nếu không mất target.
+lab_publish_ports: ["80", "3001", "8025", "9000", "9090", "9100", "8080"]
+lab_internal_cidrs: ["192.168.56.0/24", "10.0.0.0/8", "172.16.0.0/12"]
+
 # Tên miền công khai qua Cloudflare Tunnel. Đổi domain chỉ sửa 2 dòng này rồi
 # provision (route trên dashboard vẫn phải khai lại cho khớp). Tên miền phụ của API
 # (capstone-api...) đặt thẳng trên dashboard, không dùng biến nào ở đây.

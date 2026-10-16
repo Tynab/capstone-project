@@ -260,6 +260,14 @@ curl -s -o /dev/null -w "%{http_code}\n" https://capstone.yamiannephilim.com/act
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.10/active   # 200 (SPA fallback)
 curl -s http://192.168.56.10/api/health                     # {"status":"ok"}
 curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -o '"health":"up"' | wc -l   # 7
+# Cổng publish bị chặn theo nguồn (xem mục Bảo mật): luật phải nằm trong DOCKER-USER và
+# phải ĐỨNG TRƯỚC chuỗi ufw trong FORWARD; bộ đếm cho thấy luật đang thực sự chạy.
+vagrant ssh manager -c "sudo iptables -S DOCKER-USER | head -6"
+vagrant ssh manager -c "sudo iptables -S FORWARD | head -3"     # -j DOCKER-USER trước -j ufw-before-*
+vagrant ssh manager -c "sudo iptables -L DOCKER-USER -v -n | head -8"   # pkts > 0 ở nhánh 192.168.56.0/24
+# Header bảo mật phải có trên HTML; CSP cũng phải có (kiểm ở origin, đừng qua Cloudflare
+# vì Cloudflare có thể trả bản cache cũ):
+curl -sI http://192.168.56.10/ | grep -iE "content-security-policy|x-frame-options|x-content-type|referrer-policy"
 vagrant provision --provision-with ansible                  # chạy LẦN HAI: phải changed=0
 ```
 
@@ -289,11 +297,39 @@ Muốn chuyển sang private:
   không in ra log. Group `docker` là để user `ghrunner` (job deploy của CI) đọc được;
   trên VM này group `docker` vốn tương đương quyền root nên không mở thêm mặt tấn công.
 - Mongo bật auth với tài khoản `capstone`; exporter dùng cùng tài khoản đó.
-- Cổng 9090/3001/8025 chỉ mở trên mạng host-only, không ra internet.
-- **UFW được bật** trên cả 2 node, chỉ mở các cổng cần thiết (22, 2377, 7946, 4789, 80, 9000, 9090,
-  3001, 8025, 9100, 8080). Thêm service publish cổng mới thì phải thêm cổng đó vào role `common`,
-  nếu không Prometheus/truy cập sẽ mất. `cloudflared` **không cần cổng nào** (chỉ kết nối ra ngoài;
-  agent của Portainer cũng không cần vì nó nói chuyện với Portainer qua overlay network).
+- **Cổng publish chỉ cho mạng host-only — nhưng KHÔNG phải bằng UFW.** Đây là chỗ dễ hiểu sai nhất
+  trong repo, đọc kỹ:
+  - Với port mapping kiểu `ingress`, Docker DNAT gói tin ở bảng `nat` rồi đẩy qua chuỗi `FORWARD`,
+    nơi nó chèn jump tới `DOCKER-USER` **trước** các chuỗi `ufw-*`. Gói tin không đi qua `INPUT`
+    nên **UFW không thấy** — quy tắc `ufw allow from 192.168.56.0/24` cho cổng publish là vô hiệu.
+    Đo thật trên máy: `iptables -S FORWARD` cho thấy `-A FORWARD -j DOCKER-USER` đứng trước
+    `-j ufw-before-forward`, và `iptables -t nat -S DOCKER` cho thấy DNAT không kèm điều kiện nguồn.
+  - Cách đúng và đang dùng: luật trong chuỗi **`DOCKER-USER`** do role `common` cài
+    ([docker-user-rules.sh.j2](ansible/roles/common/templates/docker-user-rules.sh.j2)): cho qua
+    traffic hồi đáp + các dải nội bộ (`192.168.56.0/24`, `10.0.0.0/8` của overlay,
+    `172.16.0.0/12` của docker_gwbridge — thiếu hai dải sau là Prometheus mất 4 target), rồi **DROP**
+    các cổng publish `80, 3001, 8025, 9000, 9090, 9100, 8080` từ mọi nguồn khác. Luật được nạp bởi
+    unit systemd `capstone-docker-user-rules.service` chạy **sau** `docker.service` (không dùng
+    `iptables-persistent`: file rules được nạp trước khi Docker tạo chuỗi `DOCKER-USER` nên sẽ lỗi).
+  - **Thêm cổng publish mới thì phải thêm vào `lab_publish_ports`** trong `ansible/group_vars/all.yml`,
+    nếu không cổng đó mở cho mọi nguồn.
+  - Cách bind thẳng vào IP host-only (`host_ip` trong long syntax của `ports`) **không dùng được**:
+    `docker stack deploy` từ chối với `additional property 'host_ip' is not allowed` (đã thử thật).
+  - Riêng **cổng 80 để kiểu ingress** là cố ý: frontend chạy 2 replica trên cả 2 node nên không bind
+    được vào một IP host-only. Bản thân app vốn công khai qua Cloudflare Tunnel, và tunnel +
+    blackbox-exporter đi vào qua overlay (`http://frontend:80`) chứ không qua cổng publish này.
+- **UFW vẫn được bật** trên cả 2 node cho các cổng KHÔNG publish (22, 2377, 7946, 4789 — SSH và
+  các cổng swarm). Cổng 22 cố ý để mở mọi nguồn vì `vagrant ssh` đi qua adapter NAT của VirtualBox,
+  không đi qua mạng host-only. `cloudflared` **không cần cổng nào** (chỉ kết nối ra ngoài; agent của
+  Portainer cũng không cần vì nó nói chuyện với Portainer qua overlay network).
+- **Header bảo mật ở `frontend/nginx.conf`**: `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy` và **CSP chặt** (`default-src 'self'`). CSP chặt được vì
+  frontend tự host cả font Poppins lẫn hai ảnh minh hoạ — thêm bất kỳ nguồn ngoài nào là phải mở CSP.
+  Lưu ý `add_header` của nginx **không thừa kế** xuống location đã có `add_header` riêng, nên hai
+  location asset phải nhắc lại `nosniff`.
+- **HSTS không đặt ở nginx** (nginx phục vụ HTTP, TLS do Cloudflare lo) — phải bật tay một lần ở
+  dashboard Cloudflare: **SSL/TLS → Edge Certificates → HSTS → Enable** (khuyến nghị max-age 6 tháng,
+  bật `Include subdomains`). Bật xong thì mọi truy cập http:// sẽ được ép sang https.
 - `frontend/nginx.conf` tin `CF-Connecting-IP` từ mọi peer trong `10.0.0.0/8`, mà gateway của routing
   mesh cũng nằm trong dải đó — nên **trong mạng host-only**, một client tự gửi header này sẽ đổi được
   IP mà backend nhìn thấy (chỉ ảnh hưởng rate limit trong lab). Từ Internet thì không: đo thật

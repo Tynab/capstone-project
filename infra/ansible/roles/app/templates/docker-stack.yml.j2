@@ -73,6 +73,12 @@ services:
       restart_policy:
         condition: on-failure
 
+  # Cổng 80 CỐ Ý để kiểu ingress (không ghim vào một IP host-only như các cổng quản
+  # trị): frontend chạy 2 replica trải trên cả 2 node, mà bind vào 192.168.56.10 thì
+  # task trên worker không bind được (node đó không có IP này) và sẽ chết. Bản thân app
+  # vốn CÔNG KHAI qua Cloudflare Tunnel, và tunnel/blackbox đi vào qua overlay
+  # (http://frontend:80) chứ không qua cổng publish này — cổng 80 ở đây chỉ để máy
+  # Windows mở http://192.168.56.10 cho tiện.
   frontend:
     image: ${FRONTEND_IMAGE}
     ports:
@@ -97,6 +103,9 @@ services:
   # cần credentials thật. Xem UI ở cổng 8025.
   mailpit:
     image: axllent/mailpit
+    # Hộp thư này chứa MỌI mail reset mật khẩu của app công khai, mà mạng host-only
+    # 192.168.56.0/24 dùng chung với project khác -> cổng 8025 nằm trong danh sách bị
+    # luật DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
     ports:
       - target: 8025
         published: 8025
@@ -111,12 +120,18 @@ services:
 
   # ------------------------------- giám sát -------------------------------
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v3.13.4
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
     volumes:
       - prom_data:/prometheus
+    # Cổng publish kiểu ingress KHÔNG giới hạn được theo nguồn: Docker DNAT gói tin ở
+    # chuỗi FORWARD trước khi UFW nhìn thấy (đã đo iptables thật trên máy), mà
+    # `docker stack deploy` cũng KHÔNG nhận `host_ip` trong long syntax (schema v3 trả
+    # "additional property host_ip is not allowed" — đã thử thật ngày 2026-10-17).
+    # Vì vậy việc chặn nằm ở luật DOCKER-USER do role common cài — xem
+    # infra/ansible/roles/common/templates/docker-user-rules.sh.j2.
     ports:
       - target: 9090
         published: 9090
@@ -132,13 +147,14 @@ services:
         constraints: [node.role == manager]
 
   grafana:
-    image: grafana/grafana:11.1.0
+    image: grafana/grafana:13.2.4
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana
+    # Cổng 3001 nằm trong danh sách bị luật DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
     ports:
       - target: 3000
         published: 3001
@@ -162,8 +178,12 @@ services:
 
   # Trạng thái database: dùng chính tài khoản trong MONGO_URI.
   mongodb-exporter:
-    image: percona/mongodb_exporter:0.40
-    command: ["--collect-all", "--discovering-mode"]
+    image: percona/mongodb_exporter:0.53.0
+    # 0.5x đổi giao diện dòng lệnh: --collect-all/--discovering-mode KHÔNG còn (truyền
+    # vào là container chết vì unknown flag). --compatible-mode để vẫn xuất các tên
+    # metric cũ (mongodb_connections, mongodb_up) mà dashboard Capstone overview
+    # đang truy vấn; --collector.diagnosticdata bật nhóm số liệu như bản cũ.
+    command: ["--compatible-mode", "--collector.diagnosticdata"]
     environment:
       MONGODB_URI: ${MONGO_URI}
     networks: [capstone]
@@ -173,7 +193,7 @@ services:
         constraints: [node.role == worker]
 
   blackbox-exporter:
-    image: prom/blackbox-exporter:v0.25.0
+    image: prom/blackbox-exporter:v0.29.0
     configs:
       - source: blackbox_yml
         target: /etc/blackbox_exporter/config.yml
@@ -187,7 +207,7 @@ services:
   # global: mỗi node một container -> đo đúng phần cứng của từng máy.
   # Cổng publish kiểu host để Prometheus scrape theo IP của từng node.
   node-exporter:
-    image: prom/node-exporter:v1.8.1
+    image: prom/node-exporter:v1.12.1
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
@@ -205,7 +225,7 @@ services:
       mode: global
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -245,6 +265,8 @@ services:
       # (capstone_portainer_admin) chứ không phải tên viết trong file này.
       - source: portainer_admin
         target: portainer_admin
+    # UI này điều khiển được cả cụm swarm nên cổng 9000 nằm trong danh sách bị luật
+    # DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
     ports:
       - target: 9000
         published: 9000

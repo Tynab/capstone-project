@@ -110,3 +110,51 @@
     state: enabled
     policy: deny
     direction: incoming
+
+# ------------------- Chặn theo nguồn cho các cổng ĐÃ PUBLISH -------------------
+# Đọc kỹ trước khi sửa: các luật UFW ở trên KHÔNG chặn được cổng publish. Docker DNAT
+# gói tin ở bảng nat rồi đẩy qua chuỗi FORWARD, nơi nó chèn jump tới DOCKER-USER trước
+# chuỗi ufw-* — gói tin không đi qua INPUT nên UFW không thấy. Đo thật trên máy:
+#   iptables -S FORWARD       -> "-A FORWARD -j DOCKER-USER" đứng trước "-j ufw-before-forward"
+#   iptables -t nat -S DOCKER -> DNAT tới container không kèm điều kiện nguồn
+# Vì vậy giới hạn nguồn nằm ở chuỗi DOCKER-USER — chuỗi Docker dành riêng cho người
+# quản trị và được xét TRƯỚC các luật ACCEPT của Docker.
+# (Cách khác đã thử không được: khai `host_ip` trong long syntax của ports để bind
+# thẳng vào IP host-only — `docker stack deploy` từ chối, xem ghi chú ở docker-stack.)
+- name: Script nạp luật DOCKER-USER (chặn theo nguồn cho cổng publish)
+  template:
+    src: docker-user-rules.sh.j2
+    dest: /usr/local/sbin/capstone-docker-user-rules.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: nạp lại luật docker-user
+
+# systemd chứ không dùng iptables-persistent: file rules.v4 được nạp TRƯỚC khi Docker
+# tạo chuỗi DOCKER-USER, nên luật trỏ vào chuỗi đó sẽ lỗi lúc boot. Unit này chạy sau
+# docker.service nên chuỗi đã tồn tại.
+- name: Unit systemd nạp luật DOCKER-USER sau khi Docker khởi động
+  copy:
+    dest: /etc/systemd/system/capstone-docker-user-rules.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Capstone: chan theo nguon cho cac cong publish (DOCKER-USER)
+      After=docker.service
+      Wants=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/capstone-docker-user-rules.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: nạp lại luật docker-user
+
+- name: Bật unit nạp luật DOCKER-USER
+  systemd:
+    name: capstone-docker-user-rules.service
+    enabled: yes
+    state: started
+    daemon_reload: yes

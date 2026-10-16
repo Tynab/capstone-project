@@ -1,0 +1,9 @@
+---
+# Nạp lại luật DOCKER-USER khi script đổi. `restart` (không phải `start`) để lần sửa
+# luật sau này thực sự được áp; chạy lại provision mà script KHÔNG đổi thì handler
+# không được gọi nên vẫn giữ được changed=0 ở lần chạy thứ hai.
+- name: nạp lại luật docker-user
+  systemd:
+    name: capstone-docker-user-rules.service
+    state: restarted
+    daemon_reload: yes
