@@ -179,6 +179,7 @@ Bật một lần (phần bấm trên dashboard không script hoá được):
 | Gỡ tunnel | Xoá token trong `infra/.env` → provision. `deploy.sh --prune` xoá luôn service |
 | Xem config Cloudflare gửi về | `vagrant ssh manager -c "sudo docker logs capstone_cloudflared"` — dòng `Updated to new configuration` liệt kê đúng các hostname đang route |
 | Tìm log của app/connector | Replica có thể dồn về một node (spread chỉ là *preference*): xem chỗ thật bằng `sudo docker stack ps capstone --filter desired-state=running` rồi đọc log **trên cả hai node** |
+| Tắt script Cloudflare tự chèn vào HTML (JavaScript Detections — làm CSP chặt báo lỗi console) | `infra\cloudflare-jsd.cmd` xem trạng thái, `infra\cloudflare-jsd.cmd -Apply` để tắt. Chi tiết + lý do không có nút trên dashboard: mục "Bảo mật trong lab" |
 
 ## Portainer
 
@@ -268,6 +269,9 @@ vagrant ssh manager -c "sudo iptables -L DOCKER-USER -v -n | head -8"   # pkts >
 # Header bảo mật phải có trên HTML; CSP cũng phải có (kiểm ở origin, đừng qua Cloudflare
 # vì Cloudflare có thể trả bản cache cũ):
 curl -sI http://192.168.56.10/ | grep -iE "content-security-policy|x-frame-options|x-content-type|referrer-policy"
+# Cloudflare có chèn thêm script nào vào HTML không (phải là 0; nếu >0 xem mục Bảo mật —
+# chạy infra\cloudflare-jsd.cmd):
+curl -s "https://capstone.yamiannephilim.com/?cb=$$" | grep -c "jsd/main.js"
 vagrant provision --provision-with ansible                  # chạy LẦN HAI: phải changed=0
 ```
 
@@ -336,14 +340,23 @@ Muốn chuyển sang private:
   (**SSL/TLS → Edge Certificates → HSTS**) cũng được, hai tầng không xung đột.
   `includeSubDomains` chỉ ảnh hưởng subdomain của chính `capstone.yamiannephilim.com` (không có cái
   nào), không đụng tới `portfolio.yamiannephilim.com` của site khác trong cùng zone.
-- **Cảnh báo đã đo thật (2026-10-17)**: nếu zone Cloudflare bật **Bot Fight Mode / JavaScript
-  Detections**, Cloudflare chèn thêm **một script INLINE** vào HTML (`window.__CF$cv$params` +
-  `/cdn-cgi/challenge-platform/scripts/jsd/main.js`) và CSP chặt của mình sẽ chặn nó — console trình
-  duyệt hiện "Executing inline script violates ... script-src 'self'". Không thể vá bằng hash vì nội
-  dung script đổi theo từng request. Hai đường: **tắt Bot Fight Mode** ở dashboard
-  (Security → Bots) — khuyến nghị cho domain lab, app không hề bị ảnh hưởng khi script đó bị chặn — hoặc
-  chấp nhận một dòng lỗi console để giữ tính năng bot. HTML ở **origin** chỉ có đúng một thẻ script
-  (bundle của Vite), nên đây là vấn đề của Cloudflare chứ không phải của app.
+- **JavaScript Detections của Cloudflare — chèn script vào HTML, và cách tắt nằm ở API chứ không
+  ở dashboard** (`infra\cloudflare-jsd.cmd`, đo thật 2026-10-17). HTML ở edge dài hơn HTML ở origin
+  đúng **938 byte**: Cloudflare chèn một `<script>` inline tạo `<iframe>` 1×1 ẩn rồi nạp
+  `window.__CF$cv$params` + `/cdn-cgi/challenge-platform/scripts/jsd/main.js`. CSP chặt
+  (`script-src 'self'`) chặn đúng đoạn inline đó, nên nó **không chạy được** mà chỉ để lại một dòng
+  lỗi console ("Executing inline script violates ... script-src 'self'"); không vá được bằng CSP
+  hash vì nội dung đổi theo từng request. Chỗ này dễ mất thời gian nên ghi rõ: **tắt "Bot fight
+  mode" ở dashboard KHÔNG tắt nó** — Cloudflare tách JSD thành setting riêng `enable_js`, và tài
+  liệu Cloudflare ghi với Bot Fight Mode thì JSD "automatically enabled and cannot be disabled",
+  nên gói Free **không có** dòng "JS detections" nào để bấm (đã kiểm: toggle Bot fight mode ở trạng
+  thái tắt, script vẫn được chèn với mọi User-Agent, không qua cache — `cf-cache-status: DYNAMIC`).
+  Đường duy nhất là `PUT /zones/{zone_id}/bot_management` với `{"enable_js": false}`; đã đóng gói
+  thành `infra\cloudflare-jsd.cmd` (mặc định chỉ đọc, `-Apply` mới đổi, token `CF_API_TOKEN` trong
+  `infra/.env` đã bị gitignore). JSD là setting mức **zone** — nó chèn vào cả
+  `portfolio.yamiannephilim.com`, nên tắt là tắt cho mọi hostname trong zone; đổi lại, trên zone này
+  không còn consumer nào dùng tín hiệu JSD (Bot Fight Mode tắt, custom rules 0/5, managed rules chưa
+  tạo) nên nó vốn chỉ là script fingerprint không ai tiêu thụ.
 - `frontend/nginx.conf` tin `CF-Connecting-IP` từ mọi peer trong `10.0.0.0/8`, mà gateway của routing
   mesh cũng nằm trong dải đó — nên **trong mạng host-only**, một client tự gửi header này sẽ đổi được
   IP mà backend nhìn thấy (chỉ ảnh hưởng rate limit trong lab). Từ Internet thì không: đo thật
