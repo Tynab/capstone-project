@@ -203,8 +203,18 @@ Hai đường vào đều đúng với `TRUST_PROXY=1`:
 - qua nginx: socket = nginx (1 hop được tin) → `req.ip` = phần tử phải nhất trong XFF = IP thật;
 - gọi thẳng `capstone-api`: socket = cloudflared → `req.ip` = IP thật do Cloudflare ghi.
 
-Trong lab (không qua Cloudflare) hành vi **không đổi**: không có peer nào thuộc `10.0.0.0/8`
-theo nghĩa tin cậy của realip ⇒ `$remote_addr` vẫn là IP client như trước.
+Trong lab, hành vi của request **bình thường không đổi**, nhưng có một chi tiết phải nói đúng:
+Docker routing mesh **SNAT** traffic qua cổng publish — kiểm bằng access log của chính lab:
+`10.0.0.2 - - "GET / HTTP/1.1" 200` (máy Windows ở `192.168.56.1`). Nghĩa là:
+
+- Lab vốn đã không phân biệt client: mọi request vào nginx đều mang peer `10.0.0.2`, nên rate
+  limit trong lab vốn đã gộp một bucket. `real_ip` không làm điều này tệ thêm (không có
+  `CF-Connecting-IP` thì không viết lại gì), và với khách Internet thì nó sửa đúng vấn đề.
+- Đổi lại: `set_real_ip_from 10.0.0.0/8` cũng tin peer `10.0.0.2`, nên **client trong lab** tự
+  gửi `CF-Connecting-IP` sẽ được tôn trọng. Đây là kẽ hở chỉ tồn tại trong mạng host-only
+  (một người dùng, đã có UFW), không ảnh hưởng đường công khai — trên đường công khai header
+  đó do Cloudflare ghi. Muốn siết thì phải ghim subnet overlay (`10.0.0.0/8` → subnet của
+  network `capstone`), đổi lại là phải tạo lại network của cụm đang chạy — không đáng.
 
 ## 7. Biến môi trường và secret
 
@@ -276,6 +286,10 @@ for i in $(seq 1 11); do
     -d '{"email":"khong-ton-tai@example.com","password":"sai-be-bet"}'
 done; echo
 
+# Bằng chứng nginx thật sự viết lại IP: access log của request đi qua tunnel
+# phải hiện IP công khai của bạn, KHÔNG phải 10.0.0.2 (địa chỉ routing mesh SNAT)
+vagrant ssh manager -c "sudo docker service logs --tail 50 capstone_frontend | grep 'GET / HTTP' | tail -3"
+
 # Không đổi so với trước
 curl -s http://192.168.56.10/api/health                          # {"status":"ok"}
 curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -c '"health":"up"'   # 7
@@ -293,7 +307,7 @@ vẫn chạy và link trong mail trỏ về domain công khai.
 |---|---|
 | Agent không nối được qua overlay (`tasks.agent:9001`) | Publish 9001 bằng routing mesh + UFW allow 9001 (đúng bản stack chính thức của Portainer). Kiểm bằng UI: nếu chỉ thấy node manager là agent chưa nối |
 | `--prune` xoá nhầm service | Chỉ xoá service **không có trong file stack** của chính stack `capstone`; muốn chắc chắn thì xem diff của `docker stack services` trước/sau trong lần deploy đầu |
-| Ảnh hưởng của `real_ip`: mọi request tới nginx từ `10.0.0.0/8` đều bị tin | `cloudflared` là container duy nhất trong overlay gọi nginx; nếu sau này thêm proxy khác trong overlay thì phải siết `set_real_ip_from` về đúng subnet |
+| Ảnh hưởng của `real_ip`: mọi peer trong `10.0.0.0/8` đều được tin, kể cả gateway của routing mesh (`10.0.0.2`) nên client trong lab tự gửi `CF-Connecting-IP` sẽ được tôn trọng | Chấp nhận trong lab (host-only, một người dùng); đường công khai không bị vì Cloudflare ghi header đó. Muốn siết: ghim subnet overlay rồi đổi `set_real_ip_from` — phải tạo lại network của cụm đang chạy, để dành |
 | Token dán sai | Service `0/1` → `deploy.sh` đỏ; sửa `infra/.env` + provision, không cần đụng swarm |
 | Mật khẩu Portainer sinh ra nhưng chưa dùng lần nào | Nếu xoá volume `portainer_data` mà secret vẫn còn, Portainer tạo lại admin với **đúng** mật khẩu đó (`--admin-password-file` được đọc lại khi chưa có user) |
 
