@@ -13,7 +13,12 @@ volumes:
   mongo_data:
   prom_data:
   grafana_data:
-  portainer_data:
+  # Tên mới (trước là portainer_data): Portainer CHỈ tạo environment từ tham số -H ở lần
+  # khởi tạo ĐẦU TIÊN. Volume cũ được khởi tạo lúc -H còn trỏ sai tên agent nên không có
+  # environment nào và nó không thử lại — đổi tên volume để nó khởi tạo lại (admin tạo lại
+  # từ secret, mật khẩu không đổi). Volume cũ còn lại là rác, xoá được bằng
+  # `docker volume rm capstone_portainer_data` trên manager.
+  portainer_state:
 
 secrets:
   portainer_admin:
@@ -234,7 +239,7 @@ services:
       - --admin-password-file
       - /run/secrets/portainer_admin
     volumes:
-      - portainer_data:/data
+      - portainer_state:/data
     secrets:
       # target tường minh: mặc định swarm mount theo tên ĐÃ GHÉP STACK
       # (capstone_portainer_admin) chứ không phải tên viết trong file này.
