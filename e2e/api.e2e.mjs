@@ -38,6 +38,17 @@ const req = async (method, path_, { body, token, origin } = {}) => {
 
 const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex')
 
+// JWT HS256 ký tay bằng node:crypto: đủ để dựng token "đúng chữ ký nhưng thiếu
+// tokenVersion" (định dạng cũ) mà không phải thêm thư viện vào e2e.
+// Secret phải khớp JWT_SECRET mà e2e/lib/stack.mjs đặt cho backend trong lúc test —
+// đổi một bên mà không đổi bên kia thì khẳng định dùng token này sẽ đỏ.
+const TEST_JWT_SECRET = 'e2e-test-secret-'.padEnd(48, 'x')
+const signTestJwt = (payload) => {
+    const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+    const unsigned = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(payload)}`
+    return `${unsigned}.${crypto.createHmac('sha256', TEST_JWT_SECRET).update(unsigned).digest('base64url')}`
+}
+
 let stack
 let exitCode = 1
 try {
@@ -97,6 +108,14 @@ try {
     r = await req('GET', '/user/getuser', { token: aliceToken2 })
     record('getuser: token hợp lệ -> 200, không lộ password',
         r.status === 200 && r.data?.user && !('password' in r.data.user), `status=${r.status}`)
+    const aliceId = r.data?.user?._id
+
+    // Token ĐÚNG chữ ký nhưng payload là định dạng cũ {id} (không có tokenVersion).
+    // requireAuth so user.tokenVersion === decoded.tokenVersion; token cũ thiếu field
+    // thì decoded.tokenVersion là undefined -> phải bị từ chối, mọi người đăng nhập lại.
+    r = await req('GET', '/user/getuser', { token: signTestJwt({ id: aliceId }) })
+    record('JWT đúng chữ ký nhưng thiếu tokenVersion (định dạng cũ) -> 401',
+        r.status === 401, `status=${r.status}`)
 
     // Frontend gọi /user/getUser (chữ U hoa) còn route đăng ký /getuser (chữ thường).
     // Cặp này chỉ khớp nhờ Express mặc định không phân biệt hoa/thường.
@@ -168,8 +187,27 @@ try {
     record('updateTask: trạng thái ĐÃ lưu xuống DB', r.data?.tasks?.[0]?.completed === true,
         `completed=${r.data?.tasks?.[0]?.completed}`)
 
+    // completed phải là boolean. Gỡ guard kiểm kiểu thì 'yes' làm Mongoose ném
+    // CastError -> 500 lộ lỗi nội bộ thay vì 400 có message rõ ràng.
+    const badYes = await req('PATCH', `/task/updateTask/${taskId}`, { token: aliceToken2, body: { completed: 'yes' } })
+    const badOne = await req('PATCH', `/task/updateTask/${taskId}`, { token: aliceToken2, body: { completed: 1 } })
+    const badMissing = await req('PATCH', `/task/updateTask/${taskId}`, { token: aliceToken2, body: {} })
+    record('updateTask: completed không phải boolean -> 400 (KHÔNG được 500)',
+        badYes.status === 400 && badOne.status === 400 && badMissing.status === 400,
+        `'yes'=${badYes.status}, 1=${badOne.status}, thiếu=${badMissing.status}`)
+
     r = await req('PATCH', `/task/updateTask/${taskId}`, { token: bobToken, body: { completed: false } })
     record('PHÂN QUYỀN: Bob không sửa được task của Alice -> 404', r.status === 404, `status=${r.status}`)
+
+    // removeTask là endpoint ghi duy nhất chưa có khẳng định đường-THÀNH-CÔNG ở tầng API:
+    // các test trên chỉ chặn trường hợp người khác xoá, chưa ai chứng minh chủ task xoá ĐƯỢC.
+    r = await req('DELETE', `/task/removeTask/${taskId}`, { token: aliceToken2 })
+    const removeStatus = r.status
+    const removeMsg = r.data?.message
+    r = await req('GET', '/task/getTask', { token: aliceToken2 })
+    record('removeTask: chủ task xoá task của mình -> 200 và task biến mất',
+        removeStatus === 200 && typeof removeMsg === 'string' && r.data?.tasks?.length === 0,
+        `delete=${removeStatus}, còn ${r.data?.tasks?.length}`)
 
     // ------------------------------------------------------------- quên mật khẩu
     r = await req('POST', '/forgotPassword/forgotPassword', { body: { email: { $ne: null } } })
@@ -202,6 +240,17 @@ try {
     await mongoose.connect(stack.mongoUri)
     const users = mongoose.connection.collection('users')
 
+    // forgotPassword phải ghi HASH SHA-256 vào DB chứ không phải token thô, hạn ~15 phút.
+    // Tính chất "DB chỉ lưu hash" hiện chỉ được tin bằng đọc code: e2e tự gieo hash vào DB,
+    // nên nếu controller lưu token thô hoặc sai TTL thì mọi test khác vẫn xanh.
+    r = await req('POST', '/forgotPassword/forgotPassword', { body: { email: 'alice@example.com' } })
+    const aliceDoc = await users.findOne({ email: 'alice@example.com' })
+    const expiryLeftMs = new Date(aliceDoc.resetTokenExpiry).getTime() - Date.now()
+    record('forgotPassword: DB chỉ lưu hash SHA-256, resetTokenExpiry ~15 phút',
+        r.status === 200 && /^[0-9a-f]{64}$/.test(aliceDoc.resetToken || '') &&
+            expiryLeftMs >= 14.5 * 60 * 1000 && expiryLeftMs <= 15.5 * 60 * 1000,
+        `resetToken=${aliceDoc.resetToken} expiryLeftMs=${Math.round(expiryLeftMs)}`)
+
     const rawToken = crypto.randomBytes(20).toString('hex')
     await users.updateOne({ email: 'alice@example.com' },
         { $set: { resetToken: sha256(rawToken), resetTokenExpiry: new Date(Date.now() + 15 * 60 * 1000) } })
@@ -218,6 +267,18 @@ try {
 
     r = await req('POST', '/forgotPassword/resetPassword', { body: { token: expiredToken, password: 'matkhaumoi999' } })
     record('resetPassword: token HẾT HẠN -> 400', r.status === 400, `status=${r.status}`)
+
+    // Chính sách độ dài mật khẩu lặp ở 2 file (userController + forgotPasswordController);
+    // vế reset chưa từng chạy trong e2e — bỏ kiểm này là đặt lại được mật khẩu 1 ký tự.
+    const shortPwToken = crypto.randomBytes(20).toString('hex')
+    await users.updateOne({ email: 'alice@example.com' },
+        { $set: { resetToken: sha256(shortPwToken), resetTokenExpiry: new Date(Date.now() + 15 * 60 * 1000) } })
+    r = await req('POST', '/forgotPassword/resetPassword', { body: { token: shortPwToken, password: 'ngan' } })
+    const shortPwStatus = r.status
+    const loginOldPw = await req('POST', '/user/login', { body: { email: 'alice@example.com', password: 'matkhaumoi999' } })
+    record('resetPassword: mật khẩu ngắn -> 400 và mật khẩu cũ KHÔNG đổi',
+        shortPwStatus === 400 && loginOldPw.status === 200,
+        `reset=${shortPwStatus} loginMậtKhẩuCũ=${loginOldPw.status}`)
 
     // ------------------------------------------------------------- tokenVersion
     r = await req('GET', '/user/getuser', { token: aliceToken2 })
@@ -258,6 +319,13 @@ try {
     }
     record('rate limit: /login trả 429 sau khi vượt ngưỡng', got429,
         `429 sau ${attempts} lần thử (các lần login trước đó đã dùng chung bucket)`)
+
+    // Khoá limiter cố ý là limiterId:req.ip, KHÔNG gồm URL. Nếu ai đổi khoá sang kèm
+    // originalUrl thì chỉ cần thêm ?x=1 mỗi request là mỗi lần một bucket mới và
+    // bảo vệ brute-force mất tác dụng mà không có gì đỏ.
+    r = await req('POST', '/user/login?x=1', { body: { email: 'alice@example.com', password: 'sai' } })
+    record('rate limit: đổi query ?x=1 KHÔNG vượt được 429 (khoá theo IP, không theo URL)',
+        r.status === 429, `status=${r.status}`)
 
     r = await req('GET', '/task/getTask', { token: aliceNewToken })
     record('rate limit: không ảnh hưởng route khác (getTask vẫn 200)', r.status === 200, `status=${r.status}`)
