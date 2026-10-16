@@ -1,13 +1,32 @@
 ---
-# Đẩy toàn bộ infra/stack/ (docker-stack.yml, prometheus.yml, blackbox.yml,
-# grafana/) vào /opt/capstone. deploy.sh chạy trong thư mục đó nên các đường dẫn
-# tương đối trong file stack (./prometheus.yml ...) đều đúng.
-- name: Copy file stack và cấu hình giám sát
+# Đẩy cấu hình giám sát (prometheus.yml, blackbox.yml, grafana/) vào /opt/capstone.
+# docker-stack.yml KHÔNG copy thô mà render từ template ở bước dưới.
+- name: Copy cấu hình giám sát
   copy:
     # playbook_dir là /vagrant/infra/ansible -> lên MỘT cấp là /vagrant/infra,
     # nên đường dẫn đúng là ../stack/ (không phải ../../stack/).
     src: "{{ playbook_dir }}/../stack/"
     dest: "{{ app_dir }}/"
+    owner: vagrant
+    mode: "0644"
+  # Giữ notify: sửa mỗi prometheus.yml/blackbox.yml/dashboard cũng phải đẩy stack
+  # đi lại, nếu không config mới nằm đó mà service vẫn chạy config cũ.
+  notify: deploy stack
+
+# Template nằm trong roles/app/templates/ (cạnh env.j2, deploy.sh.j2) — KHÔNG để trong
+# infra/stack/, vì `copy: src=stack/` ở trên sẽ kéo nó sang /opt/capstone mỗi lần chạy,
+# làm task copy luôn báo changed -> handler deploy chạy lại vô ích và phá hợp đồng
+# "provision lần hai phải changed=0" (đã gặp thật). Task dưới chỉ dọn file cũ nếu còn.
+- name: Dọn bản template thô còn sót trong /opt/capstone
+  file:
+    path: "{{ app_dir }}/docker-stack.yml.j2"
+    state: absent
+
+# deploy.sh đọc /opt/capstone/docker-stack.yml (đã render).
+- name: Render docker-stack.yml từ template
+  template:
+    src: docker-stack.yml.j2
+    dest: "{{ app_dir }}/docker-stack.yml"
     owner: vagrant
     mode: "0644"
   notify: deploy stack

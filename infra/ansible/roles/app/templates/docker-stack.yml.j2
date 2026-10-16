@@ -1,5 +1,8 @@
 # Stack của bài cuối khóa. Các biến ${...} được nội suy từ /opt/capstone/.env
 # mà deploy.sh đã `source` trước khi gọi `docker stack deploy`.
+# ĐÂY LÀ TEMPLATE Jinja: Ansible render thành /opt/capstone/docker-stack.yml. Sửa file
+# này rồi provision, đừng sửa bản trong VM (lần provision sau ghi đè).
+# (Chú thích không được chứa cặp ngoặc nhọn — Jinja sẽ hiểu là biểu thức.)
 version: "3.8"
 
 networks:
