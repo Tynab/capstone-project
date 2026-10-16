@@ -294,7 +294,7 @@ vagrant ssh manager -c 'sudo docker logs --tail 30 $(sudo docker ps -q -f name=c
 
 # Không đổi so với trước
 curl -s http://192.168.56.10/api/health                          # {"status":"ok"}
-curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -c '"health":"up"'   # 7
+curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -o '"health":"up"' | wc -l   # 7
 vagrant provision --provision-with ansible                       # chạy LẦN HAI: changed=0
 ```
 

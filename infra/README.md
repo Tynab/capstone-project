@@ -170,7 +170,7 @@ curl -s https://capstone-api.yamiannephilim.com/api/health                  # {"
 curl -s -o /dev/null -w "%{http_code}\n" https://capstone.yamiannephilim.com/active   # 200 (SPA fallback qua tunnel)
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.10/active   # 200 (SPA fallback)
 curl -s http://192.168.56.10/api/health                     # {"status":"ok"}
-curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -c '"health":"up"'   # 7
+curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -o '"health":"up"' | wc -l   # 7
 vagrant provision --provision-with ansible                  # chạy LẦN HAI: phải changed=0
 ```
 
