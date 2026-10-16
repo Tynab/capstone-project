@@ -27,7 +27,9 @@ const write = (level, args) => {
   if (LEVELS[level] > currentThreshold()) return;
   // Lỗi và cảnh báo ra stderr để tách được khỏi luồng log thường khi deploy.
   const stream = level === "error" || level === "warn" ? process.stderr : process.stdout;
-  stream.write(`${new Date().toISOString()} [${level.toUpperCase()}] ${args.map(format).join(" ")}\n`);
+  stream.write(
+    `${new Date().toISOString()} [${level.toUpperCase()}] ${args.map(format).join(" ")}\n`
+  );
 };
 
 const logger = {

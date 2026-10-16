@@ -5,12 +5,10 @@
 // Quy tắc: có SMTP_HOST thì dùng host/port/secure từ env; không có thì giữ
 // nguyên hành vi Gmail cũ, để cấu hình đang chạy không bị phá.
 
-const hasGmailCreds = (env) =>
-  Boolean(env.GMAIL_USERNAME && env.GMAIL_PASSWORD);
+const hasGmailCreds = (env) => Boolean(env.GMAIL_USERNAME && env.GMAIL_PASSWORD);
 
 // Điều kiện "gửi được mail": có SMTP riêng, hoặc có đủ cặp Gmail.
-export const hasMailConfig = (env = process.env) =>
-  Boolean(env.SMTP_HOST) || hasGmailCreds(env);
+export const hasMailConfig = (env = process.env) => Boolean(env.SMTP_HOST) || hasGmailCreds(env);
 
 export const buildTransportOptions = (env = process.env) => {
   if (env.SMTP_HOST) {

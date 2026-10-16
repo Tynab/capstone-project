@@ -104,6 +104,24 @@ try {
     record('Express khớp route không phân biệt hoa/thường (/user/getUser)',
         r.status === 200, `status=${r.status}`)
 
+    // ------------------------------------------------------- lỗi và 404
+    // JSON hỏng: không có error handler thì Express trả TRANG HTML kèm stack trace
+    // (và lộ đường dẫn nội bộ) thay vì envelope {message} như phần còn lại của API.
+    const badJsonRes = await fetch(`${BASE}/user/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{khong-phai-json',
+    })
+    const badJsonText = await badJsonRes.text()
+    record('JSON hỏng -> 400 JSON {message}, không phải HTML kèm stack trace',
+        badJsonRes.status === 400 && badJsonText.includes('"message"') && !badJsonText.includes('<html'),
+        `status=${badJsonRes.status} body=${badJsonText.slice(0, 60)}`)
+
+    r = await req('GET', '/duong-dan-khong-ton-tai')
+    record('đường dẫn không tồn tại -> 404 envelope JSON {message}',
+        r.status === 404 && typeof r.data?.message === 'string',
+        `status=${r.status} body=${JSON.stringify(r.data)}`)
+
     // ------------------------------------------------------------- healthcheck
     // Endpoint này dùng cho HEALTHCHECK của image, healthcheck của swarm và
     // blackbox-exporter. Công khai, không được lộ thông tin nội bộ.
@@ -243,6 +261,23 @@ try {
 
     r = await req('GET', '/task/getTask', { token: aliceNewToken })
     record('rate limit: không ảnh hưởng route khác (getTask vẫn 200)', r.status === 200, `status=${r.status}`)
+
+    // ------------------------------------- rate limit cho route GHI của task (cuối cùng,
+    // vì bài này tiêu hết ngân sách của bucket task; các lần thêm task phía trên đã dùng chung)
+    // Trước đây taskRoute là nhóm route ghi DUY NHẤT không có trần, mà mỗi lần thêm
+    // task lại gửi một mail -> một tài khoản có thể kích hoạt gửi mail không giới hạn.
+    let taskLimited = false
+    let taskAttempts = 0
+    for (let i = 0; i < 110 && !taskLimited; i++) {
+        taskAttempts++
+        const res = await req('POST', '/task/addTask', {
+            token: aliceNewToken,
+            body: { title: `task thu ${i}`, description: 'kiem tra gioi han' },
+        })
+        if (res.status === 429) taskLimited = true
+    }
+    record('rate limit: /task/addTask trả 429 sau khi vượt ngưỡng', taskLimited,
+        `429 sau ${taskAttempts} lần thử`)
 
     exitCode = finish()
 } catch (err) {
