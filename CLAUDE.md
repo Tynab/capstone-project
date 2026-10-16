@@ -8,6 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) (job `test` → `build` đẩy image lên GHCR → `deploy` chạy trên GitHub self-hosted runner đặt trong VM manager) và [infra/](infra/) (Vagrant + Ansible dựng Docker Swarm 2 node, stack có Prometheus + Grafana + node-exporter + cAdvisor + mongodb-exporter + blackbox-exporter). Cách dựng và vận hành: [infra/README.md](infra/README.md).
 
+Stack hiện có **13 service** (12 khi chưa bật Cloudflare Tunnel): thêm `portainer` + `portainer-agent`
+(quản trị, `http://192.168.56.10:9000`) và `cloudflared` (domain công khai
+`capstone(.api).yamiannephilim.com`). Hai điểm phải nhớ khi sửa `infra/`:
+
+- `infra/ansible/roles/app/templates/docker-stack.yml.j2` là **template Jinja** do Ansible render
+  thành `/opt/capstone/docker-stack.yml` — sửa bản trong VM là vô ích, lần provision sau ghi đè.
+- Token tunnel nằm ở `infra/.env` (bị gitignore); không có token thì stack vẫn đủ phần còn lại.
+  Tunnel phải là tunnel **riêng** của lab: dùng chung với tunnel của site khác sẽ làm site kia hỏng
+  lúc có lúc không (connector lab không với tới origin của site đó).
+
 Đặc điểm quan trọng khi làm việc trong repo này: **máy Windows không có Docker** — mọi lệnh `docker` phải chạy trong VM qua `cd infra && vagrant ssh manager -c "sudo docker ..."`. Hạ tầng chỉ có thật sau khi `infra\setup.cmd` chạy xong, và CI chỉ deploy được khi runner self-hosted đang online (VM đang bật).
 
 ## Bản đồ repo và thứ tự đọc

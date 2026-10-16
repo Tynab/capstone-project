@@ -27,13 +27,18 @@ Windows 11 (máy dev)                        GitHub
    │ swarm-manager · 192.168.56.10  │  │ swarm-worker · 192.168.56.11  │
    │  frontend(nginx) · backend     │  │  mongo + volume               │
    │  prometheus · grafana · mailpit│  │  backend · frontend           │
+   │  portainer(:9000) · cloudflared│  │  portainer-agent              │
    │  mongodb/blackbox exporter     │  │  node-exporter · cAdvisor     │
    │  node-exporter · cAdvisor      │  │                               │
    │  GitHub self-hosted runner     │  │                               │
    └────────────────────────────────┘  └───────────────────────────────┘
 ```
 
-Truy cập từ máy dev: **80** app · **9090** Prometheus · **3001** Grafana · **8025** Mailpit (hộp thư của lab).
+Truy cập từ máy dev: **80** app · **9000** Portainer · **9090** Prometheus · **3001** Grafana ·
+**8025** Mailpit (hộp thư của lab).
+
+Công khai qua **Cloudflare Tunnel** (bật/gỡ bằng một biến trong `infra/.env`):
+<https://capstone.yamiannephilim.com> cho app và <https://capstone-api.yamiannephilim.com> cho API.
 
 ## Thành phần
 
@@ -44,6 +49,8 @@ Truy cập từ máy dev: **80** app · **9090** Prometheus · **3001** Grafana 
 | [infra/](infra/) | Vagrant + Ansible → Docker Swarm | Dựng 2 VM, cài Docker, join swarm, sinh secret, deploy stack, cài runner |
 | [e2e/](e2e/) | Node + mongodb-memory-server + puppeteer-core | Test trên hạ tầng thật: 43 khẳng định tầng API + 13 khẳng định qua Chrome |
 | [.github/workflows/](.github/workflows/) | GitHub Actions | Pipeline test → build → deploy |
+| Cloudflare Tunnel | cloudflared chạy trong stack | Đưa app/API ra domain thật mà không mở cổng vào, không cần IP công khai |
+| Portainer | portainer-ce + agent (`mode: global`) | Quản trị swarm trên UI, xem container/volume/image của cả 2 node |
 | [docs/](docs/) | — | Đặc tả thiết kế và kế hoạch thi công của phần hạ tầng |
 
 ## Bắt đầu nhanh

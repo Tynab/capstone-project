@@ -14,6 +14,7 @@ Windows 11 (D:\capstone-project)
    │   ├─ docker swarm manager + control node Ansible (ansible_local)
    │   ├─ frontend(nginx:80) · backend · prometheus(:9090) · grafana(:3001)
    │   ├─ mailpit(:8025) · mongodb-exporter · blackbox-exporter
+   │   ├─ portainer(:9000) + portainer-agent (global) · cloudflared (khi bật tunnel)
    │   ├─ node-exporter + cAdvisor (global)
    │   └─ GitHub self-hosted runner (systemd, nhãn swarm-manager)
    └─ VM swarm-worker · 192.168.56.11 · 4GB/2CPU
@@ -22,7 +23,11 @@ Windows 11 (D:\capstone-project)
        └─ node-exporter + cAdvisor (global)
 ```
 
-Truy cập từ máy bạn: **80** app · **9090** Prometheus · **3001** Grafana · **8025** Mailpit.
+Truy cập từ máy bạn: **80** app · **9000** Portainer · **9090** Prometheus · **3001** Grafana ·
+**8025** Mailpit. Công khai (chỉ khi bật tunnel): **capstone.yamiannephilim.com** (app) và
+**capstone-api.yamiannephilim.com** (API).
+
+Stack có **13 service** khi bật tunnel, **12** khi không (xem mục Cloudflare Tunnel).
 
 **Vì sao Ansible chạy trong VM manager chứ không trên Windows:** Ansible không chạy
 native trên Windows; phương án WSL2 thêm một dependency lớn. Dùng provisioner
@@ -54,6 +59,55 @@ infra\destroy.cmd
 thêm rule firewall cho mạng host-only → sinh khoá SSH lab (`infra/.ssh/lab_key`) →
 lấy runner token bằng `gh` → `vagrant up` → `vagrant provision --provision-with ansible`.
 Chạy lại nhiều lần vô hại.
+
+## Cloudflare Tunnel (đưa app ra Internet)
+
+Tunnel là **tuỳ chọn**: không có token thì stack vẫn dựng đủ 12 service còn lại. Khi bật, app ở
+`https://capstone.yamiannephilim.com`, API ở `https://capstone-api.yamiannephilim.com`. Connector
+**chủ động kết nối ra ngoài** (7844 TCP/UDP) nên không phải mở thêm cổng vào, và lab không cần IP
+công khai.
+
+⚠️ **Phải là tunnel RIÊNG của lab.** Một tunnel chia sẻ đúng một config cho mọi connector: nếu dán
+token của tunnel đang phục vụ site khác (ví dụ `portfolio.yamiannephilim.com`), connector trong lab
+thành replica thứ hai của tunnel đó, mà lab không với tới origin của site kia → site kia bị 502 lúc
+có lúc không. Đã gặp thật ngày 2026-10-16.
+
+Bật một lần (phần bấm trên dashboard không script hoá được):
+
+1. Dashboard Cloudflare → domain `yamiannephilim.com` → **Networking → Tunnels** (giao diện mới nằm
+   ở `one.dash.cloudflare.com` → **Networks → Tunnels**) → **Create Tunnel** → **Cloudflared** →
+   tên `capstone`.
+2. Ở bước "Install and run": **không chạy lệnh**, chỉ copy chuỗi `eyJ...` (token là một khối base64
+   duy nhất, dài ~180 ký tự).
+3. Tab **Routes** → **Add route** → **Published application**, khai 2 lần:
+
+   | Subdomain | Domain | Service URL |
+   |---|---|---|
+   | `capstone` | `yamiannephilim.com` | `http://frontend:80` |
+   | `capstone-api` | `yamiannephilim.com` | `http://backend:8000` |
+
+   Type chọn **HTTP**; để trống `HTTP Host Header` và `Origin Server Name`. DNS record do Cloudflare
+   tự tạo khi bấm Add route.
+4. Dán token vào `infra/.env` (file này bị `.gitignore` chặn) rồi chạy lại `infra\setup.cmd` hoặc
+   `cd infra && vagrant provision --provision-with ansible`.
+
+| Việc | Cách làm |
+|---|---|
+| Đổi/rotate token | Sửa `infra/.env` → provision. `deploy.sh` cập nhật env của service và thay task |
+| Gỡ tunnel | Xoá token trong `infra/.env` → provision. `deploy.sh --prune` xoá luôn service |
+| Xem config Cloudflare gửi về | `vagrant ssh manager -c "sudo docker logs capstone_cloudflared"` — dòng `Updated to new configuration` liệt kê đúng các hostname đang route |
+| Tìm log của app/connector | Replica có thể dồn về một node (spread chỉ là *preference*): xem chỗ thật bằng `sudo docker stack ps capstone --filter desired-state=running` rồi đọc log **trên cả hai node** |
+
+## Portainer
+
+`http://192.168.56.10:9000` — chỉ trong mạng host-only, **không** ra Internet. Đăng nhập `admin`
+với `PORTAINER_ADMIN_PASSWORD` trong `/opt/capstone/.env`
+(`vagrant ssh manager -c "sudo cat /opt/capstone/.env"`).
+
+`portainer-agent` chạy `mode: global` (một container mỗi node) nên UI thấy được container/image/volume
+của **cả hai** node; không có agent thì chỉ thấy của node manager. Mật khẩu admin sinh tự động và
+**chỉ được đọc ở lần tạo admin đầu tiên** — xoá volume `capstone_portainer_data` thì Portainer tạo lại
+admin với đúng mật khẩu đó.
 
 ## Vận hành
 
@@ -95,6 +149,12 @@ Cách trên chạy một container `mongo:6` tạm trong overlay network và tr�
 | Deploy báo lỗi "service KHÔNG chạy đúng ảnh được yêu cầu" | Swarm đã rollback: task mới bị coi là hỏng trước khi kịp healthy | Kiểm `docker service inspect <svc> --format '{{json .UpdateStatus}}'`; `update_config.monitor` phải LỚN HƠN `start-period` + `interval` của healthcheck (đang là 45s) |
 | Job `deploy` lỗi `Permission denied` (exit 126) | `/opt/capstone` hoặc `.env` không cho user `ghrunner` đi qua/đọc | Role `app` đặt thư mục 0755 và `.env` 0640 group `docker`; kiểm bằng `sudo -u ghrunner sh -c '. /opt/capstone/.env'` |
 | Runner không đăng ký được: `minimum runner version ... is now X` | GitHub chặn runner cũ đăng ký | Role `runner` để `runner_version` rỗng = tự lấy bản mới nhất; đừng ghim cứng số phiên bản |
+| Domain công khai trả 502/1033 | Connector chưa chạy (VM manager tắt), **token sai**, hoặc route trên dashboard trỏ sai | `docker logs capstone_cloudflared`: token sai thì log có `ERR Register tunnel error ... "Failed to get tunnel"`; kiểm Service URL phải là `http://frontend:80` / `http://backend:8000` |
+| Domain công khai chết mà `docker stack services` vẫn báo `cloudflared 1/1` và deploy vẫn xanh | **Token đúng định dạng nhưng sai** — cloudflared KHÔNG thoát, nó retry mãi (đo thật 2026-10-16). Chỉ token sai định dạng mới làm container thoát (`0/1`) | Xem log connector như dòng trên; sửa `infra/.env` rồi provision. Không healthcheck được: image distroless nên trong container không có `wget`/`curl` |
+| Site khác trên cùng domain bị 502 lúc có lúc không | Dán token của tunnel đang phục vụ site đó → connector lab thành replica thứ hai, mà lab không với tới origin của site kia | Tạo tunnel RIÊNG cho lab (xem mục Cloudflare Tunnel); xoá token trong `infra/.env` rồi provision để gỡ connector ngay |
+| Portainer `0/1` rồi restart liên tục | Không đọc được file secret, hoặc không nối được agent | `docker service logs capstone_portainer`; file `/opt/capstone/secrets/portainer_admin` phải là `0640 vagrant:docker` |
+| Portainer UI chỉ thấy 1 node | `portainer-agent` không lên ở node kia | `docker service ps capstone-portainer-agent`; agent là service `global` nên phải `2/2` |
+| Access log nginx toàn `10.0.x.x` | Request đi qua tunnel mà `real_ip` không chạy, hoặc ảnh frontend cũ chưa được CI deploy | Kiểm 3 dòng `set_real_ip_from` / `real_ip_header` / `real_ip_recursive` trong `frontend/nginx.conf` và ảnh đang chạy của service `frontend` |
 
 ## Kiểm chứng
 
@@ -104,7 +164,10 @@ Chạy sau mỗi lần đổi hạ tầng (mọi bước đều kiểm được 
 cd infra
 vagrant status                                              # 2 VM running
 vagrant ssh manager -c "sudo docker node ls"                # 1 Leader + 1 Ready
-vagrant ssh manager -c "sudo docker stack services capstone" # 10 service đủ replica
+vagrant ssh manager -c "sudo docker stack services capstone" # 13 service đủ replica (12 nếu chưa bật tunnel)
+curl -s http://192.168.56.10:9000/api/system/status                         # JSON Portainer: {"Version":"2.45.2",...}
+curl -s https://capstone-api.yamiannephilim.com/api/health                  # {"status":"ok"} — xuyên tunnel
+curl -s -o /dev/null -w "%{http_code}\n" https://capstone.yamiannephilim.com/active   # 200 (SPA fallback qua tunnel)
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.10/active   # 200 (SPA fallback)
 curl -s http://192.168.56.10/api/health                     # {"status":"ok"}
 curl -s "http://192.168.56.10:9090/api/v1/targets?state=active" | grep -c '"health":"up"'   # 7
@@ -138,6 +201,11 @@ Muốn chuyển sang private:
   trên VM này group `docker` vốn tương đương quyền root nên không mở thêm mặt tấn công.
 - Mongo bật auth với tài khoản `capstone`; exporter dùng cùng tài khoản đó.
 - Cổng 9090/3001/8025 chỉ mở trên mạng host-only, không ra internet.
-- **UFW được bật** trên cả 2 node, chỉ mở các cổng cần thiết (22, 2377, 7946, 4789, 80, 9090, 3001, 8025, 9100, 8080). Thêm service publish cổng mới thì phải thêm cổng đó vào role `common`, nếu không Prometheus/truy cập sẽ mất.
+- **UFW được bật** trên cả 2 node, chỉ mở các cổng cần thiết (22, 2377, 7946, 4789, 80, 9000, 9090,
+  3001, 8025, 9100, 8080). Thêm service publish cổng mới thì phải thêm cổng đó vào role `common`,
+  nếu không Prometheus/truy cập sẽ mất. `cloudflared` **không cần cổng nào** (chỉ kết nối ra ngoài;
+  agent của Portainer cũng không cần vì nó nói chuyện với Portainer qua overlay network).
+- Windows Firewall cần rule cho mạng host-only với các cổng 80, 9000, 9090, 3001, 8025 —
+  `infra\setup.cmd` tự thêm (rule cũ thiếu cổng 9000 sẽ được tạo lại).
 - `TRUST_PROXY=1` bắt buộc vì backend nằm sau nginx — thiếu nó thì rate limit
   đếm chung một IP cho mọi request.
