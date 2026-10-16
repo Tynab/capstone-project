@@ -287,8 +287,10 @@ for i in $(seq 1 11); do
 done; echo
 
 # Bằng chứng nginx thật sự viết lại IP: access log của request đi qua tunnel
-# phải hiện IP công khai của bạn, KHÔNG phải 10.0.0.2 (địa chỉ routing mesh SNAT)
-vagrant ssh manager -c "sudo docker service logs --tail 50 capstone_frontend | grep 'GET / HTTP' | tail -3"
+# phải hiện IP công khai của bạn, KHÔNG phải 10.0.0.2 (địa chỉ routing mesh SNAT).
+# Đọc log của container cục bộ trên manager (nhanh); `docker service logs` gom log
+# từ cả 2 node nên đã bị treo >3 phút khi thử.
+vagrant ssh manager -c 'sudo docker logs --tail 30 $(sudo docker ps -q -f name=capstone_frontend | head -1) 2>&1 | grep "GET / HTTP" | tail -3'
 
 # Không đổi so với trước
 curl -s http://192.168.56.10/api/health                          # {"status":"ok"}
