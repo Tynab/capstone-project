@@ -5,8 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import ResetPassword from "./ResetPassword";
 import { resetPassword } from "../api/authApi";
 
-jest.mock("../api/authApi", () => ({
-  resetPassword: jest.fn(),
+vi.mock("../api/authApi", () => ({
+  resetPassword: vi.fn(),
 }));
 
 const renderReset = (token) =>

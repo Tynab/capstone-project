@@ -3,12 +3,12 @@ import { getTasks, addTask, removeTask, setTaskCompleted } from "./taskApi";
 
 // Mock toàn bộ instance axios của client.js: test taskApi chỉ cần biết nó bóc
 // đúng key trong envelope {message, tasks}/{message, task} của backend.
-jest.mock("./client", () => {
+vi.mock("./client", () => {
   const instance = {
-    get: jest.fn(),
-    post: jest.fn(),
-    delete: jest.fn(),
-    patch: jest.fn(),
+    get: vi.fn(),
+    post: vi.fn(),
+    delete: vi.fn(),
+    patch: vi.fn(),
   };
   return { __esModule: true, default: instance };
 });

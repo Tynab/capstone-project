@@ -1,18 +1,23 @@
+import axiosMock from "axios";
 import { readToken, clearToken } from "../utils/authStorage";
+import client from "./client";
 
 // Mock axios: bắt lấy hai interceptor mà client.js đăng ký lúc import để test
 // gọi thẳng handler, không cần server HTTP thật.
-jest.mock("axios", () => {
+// vi.mock được hoist lên trên MỌI import trong file (kể cả import "./client")
+// nên client.js nhận đúng instance giả ngay lúc module load — không cần đặt
+// import sau mock như jest.
+vi.mock("axios", () => {
   const handlers = {};
   const instance = {
     interceptors: {
       request: {
-        use: jest.fn((onFulfilled) => {
+        use: vi.fn((onFulfilled) => {
           handlers.request = onFulfilled;
         }),
       },
       response: {
-        use: jest.fn((_onFulfilled, onRejected) => {
+        use: vi.fn((_onFulfilled, onRejected) => {
           handlers.responseError = onRejected;
         }),
       },
@@ -23,7 +28,7 @@ jest.mock("axios", () => {
     default: {
       // Bắt baseURL ngay lúc create chạy (module load): clearAllMocks xoá
       // lịch sử gọi của create nên không thể assert toHaveBeenCalledWith.
-      create: jest.fn((config) => {
+      create: vi.fn((config) => {
         handlers.baseURL = config && config.baseURL;
         return instance;
       }),
@@ -33,15 +38,15 @@ jest.mock("axios", () => {
   };
 });
 
-jest.mock("../utils/authStorage", () => ({
-  readToken: jest.fn(),
-  clearToken: jest.fn(),
+vi.mock("../utils/authStorage", () => ({
+  readToken: vi.fn(),
+  clearToken: vi.fn(),
 }));
 
-// Import sau mock để client.js nhận đúng instance giả và đăng ký interceptor.
-import client from "./client";
-
-const { __handlers } = require("axios").default;
+// Thay cho require("axios").default của jest (Vitest chạy ESM thật, không có
+// require): module giả trả cùng một object cho mọi nơi import nên bóc
+// __handlers trực tiếp từ import này.
+const { __handlers } = axiosMock;
 
 // jsdom không cho gán window.location trực tiếp; defineProperty tạo thuộc tính
 // riêng đè lên getter nguyên bản, xoá đi là khôi phục.
@@ -54,7 +59,7 @@ const mockLocation = (pathname) => {
 };
 
 describe("client.js — request interceptor", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
   test("gắn Authorization: Bearer khi có token", () => {
     readToken.mockReturnValue("jwt-abc");
@@ -71,16 +76,18 @@ describe("client.js — request interceptor", () => {
     expect(result).toBe(config);
   });
 
-  test("instance được tạo với baseURL mặc định khi chưa có REACT_APP_API_URL", () => {
-    // baseURL mặc định http://localhost:8000/api nằm trong mã (repo không có
-    // frontend/.env nên REACT_APP_API_URL không được đặt trong môi trường test).
-    expect(__handlers.baseURL).toBe("http://localhost:8000/api");
-    expect(client).toBe(require("axios").default.__instance);
+  test("instance được tạo với baseURL mặc định là đường dẫn tương đối /api", () => {
+    // Mặc định phải là TƯƠNG ĐỐI: production nginx proxy /api sang backend, dev server
+    // Vite proxy tương tự (xem vite.config.mjs). Trỏ cứng localhost:8000 ở đây là bản
+    // deploy gọi vào chính máy người dùng — lỗi đã từng có trong repo này.
+    // (repo không có frontend/.env nên VITE_API_URL không được đặt trong môi trường test)
+    expect(__handlers.baseURL).toBe("/api");
+    expect(client).toBe(axiosMock.__instance);
   });
 });
 
 describe("client.js — response interceptor 401", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
   afterEach(() => {
     delete window.location;
   });

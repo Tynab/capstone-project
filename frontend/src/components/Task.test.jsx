@@ -6,9 +6,9 @@ import TaskContext from "../context/TaskContext";
 import { TASK_ACTIONS } from "../constants";
 import { removeTask, setTaskCompleted } from "../api/taskApi";
 
-jest.mock("../api/taskApi", () => ({
-  removeTask: jest.fn(),
-  setTaskCompleted: jest.fn(),
+vi.mock("../api/taskApi", () => ({
+  removeTask: vi.fn(),
+  setTaskCompleted: vi.fn(),
 }));
 
 // Task đến từ server nên đã có _id và createdAt.
@@ -21,7 +21,7 @@ const task = {
 };
 
 const renderTask = (overrides = {}) => {
-  const dispatch = jest.fn();
+  const dispatch = vi.fn();
   render(
     <TaskContext.Provider value={{ dispatch }}>
       <Task task={{ ...task, ...overrides }} />

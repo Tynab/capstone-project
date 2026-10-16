@@ -1,3 +1,4 @@
-// Nạp matcher của jest-dom (toBeInTheDocument, toHaveValue, toBeDisabled...).
-// react-scripts 5 tự nạp file này trước mỗi file test nên không cần import ở từng file.
-import "@testing-library/jest-dom";
+// Nạp matcher của jest-dom cho Vitest (toBeInTheDocument, toBeDisabled...).
+// Phải dùng entry "/vitest" — bản gốc "@testing-library/jest-dom" gắn matcher vào
+// `expect` của jest nên với Vitest sẽ báo "Invalid Chai property".
+import "@testing-library/jest-dom/vitest";

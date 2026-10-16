@@ -6,12 +6,12 @@ import TaskContext from "../context/TaskContext";
 import { TASK_ACTIONS } from "../constants";
 import { addTask } from "../api/taskApi";
 
-jest.mock("../api/taskApi", () => ({
-  addTask: jest.fn(),
+vi.mock("../api/taskApi", () => ({
+  addTask: vi.fn(),
 }));
 
 const renderCreate = () => {
-  const dispatch = jest.fn();
+  const dispatch = vi.fn();
   render(
     <TaskContext.Provider value={{ dispatch }}>
       <CreateTask />

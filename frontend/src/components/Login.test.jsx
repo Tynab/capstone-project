@@ -10,16 +10,16 @@ import { saveToken } from "../utils/authStorage";
 
 // Mock toàn bộ lớp API và nơi ghi token: test Login không cần server, chỉ kiểm
 // chứng luồng dispatch/save và luồng báo lỗi.
-jest.mock("../api/authApi", () => ({
-  login: jest.fn(),
+vi.mock("../api/authApi", () => ({
+  login: vi.fn(),
 }));
-jest.mock("../utils/authStorage", () => ({
-  saveToken: jest.fn(),
+vi.mock("../utils/authStorage", () => ({
+  saveToken: vi.fn(),
 }));
 
 const renderLogin = () => {
-  const tokenDispatch = jest.fn();
-  const userDispatch = jest.fn();
+  const tokenDispatch = vi.fn();
+  const userDispatch = vi.fn();
   render(
     <MemoryRouter>
       <TokenContext.Provider value={{ userToken: null, tokenDispatch, userDispatch }}>
