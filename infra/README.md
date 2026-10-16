@@ -353,7 +353,10 @@ Muốn chuyển sang private:
   thái tắt, script vẫn được chèn với mọi User-Agent, không qua cache — `cf-cache-status: DYNAMIC`).
   Đường duy nhất là `PUT /zones/{zone_id}/bot_management` với `{"enable_js": false}`; đã đóng gói
   thành `infra\cloudflare-jsd.cmd` (mặc định chỉ đọc, `-Apply` mới đổi, token `CF_API_TOKEN` trong
-  `infra/.env` đã bị gitignore). JSD là setting mức **zone** — nó chèn vào cả
+  `infra/.env` đã bị gitignore). Nếu token chỉ có `Bot Management: Edit` thì **điền thêm
+  `CF_ZONE_ID`** vào `infra/.env` (Zone ID nằm ở Overview → thẻ "API"): tra zone theo tên cần thêm
+  quyền `Zone: Read`, mà thiếu quyền đó Cloudflare trả **danh sách rỗng** (HTTP 200) chứ không báo
+  lỗi — rất dễ đọc sai thành "token sai". JSD là setting mức **zone** — nó chèn vào cả
   `portfolio.yamiannephilim.com`, nên tắt là tắt cho mọi hostname trong zone; đổi lại, trên zone này
   không còn consumer nào dùng tín hiệu JSD (Bot Fight Mode tắt, custom rules 0/5, managed rules chưa
   tạo) nên nó vốn chỉ là script fingerprint không ai tiêu thụ.

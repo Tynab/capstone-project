@@ -61,23 +61,28 @@ $ApiBase = "https://api.cloudflare.com/client/v4"
 # "Could not create SSL/TLS secure channel". Đặt tường minh TLS 1.2.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-# ===== Token =====
-# Thứ tự: tham số -> biến môi trường -> infra\.env (đã bị gitignore, cạnh script này).
-# KHÔNG in token ra màn hình ở bất kỳ nhánh nào.
-function Resolve-Token {
-    if ($Token) { return $Token.Trim() }
-    if ($env:CF_API_TOKEN) { return $env:CF_API_TOKEN.Trim() }
+# ===== Đọc cấu hình =====
+# Thứ tự cho MỌI giá trị: tham số dòng lệnh -> biến môi trường -> infra\.env (đã bị gitignore,
+# nằm cạnh script này). Không in token ra màn hình ở bất kỳ nhánh nào.
+function Get-EnvValue([string]$Name) {
+    $v = [Environment]::GetEnvironmentVariable($Name)
+    if ($v) { return $v.Trim().Trim('"').Trim("'") }
     $envFile = Join-Path $PSScriptRoot ".env"
     if (Test-Path $envFile) {
         foreach ($line in (Get-Content $envFile)) {
-            if ($line -match '^\s*CF_API_TOKEN\s*=\s*(.+)$') {
+            if ($line -match ("^\s*" + [regex]::Escape($Name) + "\s*=\s*(.+)$")) {
                 # Người dùng hay dán kèm nháy bao ngoài -> cắt cho chắc.
-                $v = $Matches[1].Trim().Trim('"').Trim("'")
-                if ($v) { return $v }
+                $val = $Matches[1].Trim().Trim('"').Trim("'")
+                if ($val) { return $val }
             }
         }
     }
     return $null
+}
+
+function Resolve-Token {
+    if ($Token) { return $Token.Trim() }
+    return Get-EnvValue "CF_API_TOKEN"
 }
 
 # ===== Gọi API =====
@@ -166,15 +171,38 @@ if ($Apply) {
 }
 
 # 1) Zone id
+# Thứ tự: -ZoneId -> CF_ZONE_ID (biến môi trường hoặc infra\.env) -> tra API theo tên.
+# Đường CF_ZONE_ID không cần thêm quyền nào, và đó là lý do nó tồn tại: GET /zones?name=...
+# cần quyền Zone -> Zone -> Read, mà token chỉ có Bot Management -> Edit thì Cloudflare lọc
+# danh sách theo quyền và trả `result: []` (HTTP 200, success: true) — KHÔNG phải lỗi xác
+# thực. Đã gặp thật 2026-10-17: script cũ tưởng đó là "token sai" nên báo sai hướng.
 $zoneId = $ZoneId
+$zoneNguon = "-ZoneId"
+if (-not $zoneId) {
+    $zoneId = Get-EnvValue "CF_ZONE_ID"
+    $zoneNguon = "CF_ZONE_ID"
+}
 if (-not $zoneId) {
     $z = Invoke-CfApi -Method "Get" -Path "/zones?name=$Zone"
     if (-not $z.result -or @($z.result).Count -eq 0) {
-        throw "Khong tra duoc zone '$Zone' theo ten. Token co the sai tai khoan hoac thieu quyen Zone:Read -> kiem tra lai, hoac truyen -ZoneId."
+        Write-Host ""
+        Write-Host "Khong tra duoc zone '$Zone' bang API." -ForegroundColor Red
+        Write-Host "  Token VAN dung (API khong bao loi xac thuc) — nguyen nhan la thieu mot trong:"
+        Write-Host "    - quyen Zone -> Zone -> Read (thieu quyen thi Cloudflare tra danh sach RONG, khong loi),"
+        Write-Host "    - Zone Resources cua token khong bao gom zone nay, hoac token thuoc tai khoan khac."
+        Write-Host "  Chon mot trong hai duong sau, ca hai deu khong phai sua gi them:"
+        Write-Host "   A. Khong doi token — truyen thang Zone ID:"
+        Write-Host "      dash.cloudflare.com -> chon zone -> Overview -> the 'API' (goc phai duoi) -> copy 'Zone ID'"
+        Write-Host "      roi chay:  infra\cloudflare-jsd.cmd -ZoneId <zone-id> [-Apply]"
+        Write-Host "      (hoac dan mot dong  CF_ZONE_ID=<zone-id>  vao infra\.env de khoi go lai)"
+        Write-Host "   B. Sua token: them quyen Zone -> Zone -> Read (giu nguyen Bot Management -> Edit),"
+        Write-Host "      luu token roi chay lai lenh cu."
+        exit 2
     }
     $zoneId = @($z.result)[0].id
+    $zoneNguon = "tra theo ten (token co quyen Zone:Read)"
 }
-Write-Host "Zone id: $zoneId"
+Write-Host "Zone id: $zoneId  [$zoneNguon]"
 Write-Host ""
 
 # 2) Trạng thái hiện tại (GET — nhánh này không đổi gì)
