@@ -17,9 +17,14 @@ RUNNER_TOKEN = ENV.fetch("RUNNER_TOKEN", "")
 # lặng lẽ biến mất khỏi stack. File thiếu = token rỗng = không dựng cloudflared.
 INFRA_ENV_PATH = File.join(__dir__, ".env")
 INFRA_ENV = if File.exist?(INFRA_ENV_PATH)
+  # Phải chịu được file do người dùng tự sửa trên Windows: PowerShell 5.1 ghi kèm BOM
+  # (Out-File -Encoding utf8 / Set-Content -Encoding UTF8), và có thể lọt dòng không có
+  # dấu "=" (dán cả lệnh thay vì chỉ token, hoặc gõ sót). Không lọc hai thứ đó thì
+  # `.to_h` ném ArgumentError ngay lúc Vagrant đọc Vagrantfile -> MỌI lệnh vagrant chết
+  # với backtrace không nhắc gì tới infra/.env (đã tái hiện thật khi thêm dòng lạ).
   File.readlines(INFRA_ENV_PATH, chomp: true)
-      .map(&:strip)
-      .reject { |line| line.empty? || line.start_with?("#") }
+      .map { |line| line.strip.gsub(/\A\uFEFF/, "") }
+      .reject { |line| line.empty? || line.start_with?("#") || !line.include?("=") }
       .map { |line| line.split("=", 2) }
       .to_h
       .transform_values { |value| value.to_s.gsub(/\A"|"\z/, "") }
