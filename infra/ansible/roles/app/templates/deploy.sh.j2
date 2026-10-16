@@ -69,8 +69,17 @@ done
 # (Chú thích không được chứa cặp ngoặc nhọn — Jinja sẽ hiểu là biểu thức.)
 running=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Image{{ "}}" }}')
 echo "$running"
-if ! echo "$running" | grep -qF "${BACKEND_IMAGE}" || ! echo "$running" | grep -qF "${FRONTEND_IMAGE}"; then
-  echo "LỖI: service KHÔNG chạy đúng ảnh được yêu cầu (${BACKEND_IMAGE} / ${FRONTEND_IMAGE})."
+# CỐ Ý dùng `case` khớp chuỗi, KHÔNG dùng `echo ... | grep -qF`: grep -q thoát ngay
+# khi khớp nên đầu đọc của pipe đóng lại, `echo` đang ghi nhận EPIPE ("write error:
+# Broken pipe") và với `set -o pipefail` thì pipeline bị coi là lỗi DÙ ĐÃ KHỚP —
+# deploy đúng vẫn kết luận đỏ. Đã gặp thật ngày 2026-10-16: deploy lên :b96abc1
+# thành công (2/2 replica đúng ảnh) mà job vẫn fail vì đúng cái pipe này.
+thieu=""
+case "$running" in *"${BACKEND_IMAGE}"*) ;; *) thieu="backend" ;; esac
+case "$running" in *"${FRONTEND_IMAGE}"*) ;; *) thieu="${thieu} frontend" ;; esac
+if [ -n "$thieu" ]; then
+  echo "LỖI: service KHÔNG chạy đúng ảnh được yêu cầu (thiếu:${thieu})."
+  echo "Mong đợi: ${BACKEND_IMAGE} / ${FRONTEND_IMAGE}"
   echo "Thường là image không tồn tại nên swarm đã rollback về bản cũ."
   exit 1
 fi
