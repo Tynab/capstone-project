@@ -96,8 +96,13 @@ node-forge, sprintf-js…) đã biến mất, kéo theo gần hết cảnh báo.
 lý do cụ thể và đo được — mỗi lần thêm phải chạy đủ `npm run build`, `npm test`, `npm run lint`, và
 `cd ../e2e && npm run test:browser`.
 
-Vài cảnh báo còn lại (nếu có) đều nằm ở gói **chưa có bản vá ở bất kỳ phiên bản nào** (`braces`,
-`node-forge`, `sprintf-js` từng rơi vào nhóm này) — nhóm đó chỉ hết khi gói rời khỏi cây dependency.
+Trạng thái đo được ngay sau migration (2026-10-16): Dependabot còn **1 cảnh báo** —
+`postcss-selector-parser` [medium], cần vá ở 7.1.6 nhưng `tailwindcss` 3 ghim `^6`
+(qua `postcss-nested`). Đây là nhóm **chỉ hết khi đổi major của công cụ lớn**: muốn về
+0 cảnh báo thì phải lên Tailwind 4 (viết lại tầng style: config chuyển vào CSS, plugin
+PostCSS đổi tên, một số utility bị bỏ) — là việc riêng, và cần soi lại giao diện bằng
+mắt vì test tự động không so từng pixel. Các gói kiểu `braces`/`node-forge`/`sprintf-js`
+(cảnh báo không có bản vá ở bất kỳ phiên bản nào) đã rời khỏi cây dependency sau khi bỏ CRA.
 
 **Luôn kiểm bằng `npm ci --dry-run` sau mỗi lần sửa lockfile hoặc `package.json`** — CI dùng `npm ci`
 (CNpm của Node 20 = npm 10) nên lockfile lệch là job test đỏ ngay từ bước cài dependency, trước cả khi
