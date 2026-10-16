@@ -20,7 +20,11 @@ if [ -n "$TAG" ]; then
 fi
 
 echo "Deploy {{ stack_name }}: backend=${BACKEND_IMAGE} frontend=${FRONTEND_IMAGE}"
-docker stack deploy -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
+# --prune: xoá service không còn trong file stack. Bắt buộc phải có vì tunnel là TUỲ CHỌN:
+# bỏ token trong infra/.env là khối if trong template biến mất, nhưng `docker stack deploy`
+# mặc định KHÔNG xoá service đã bị bỏ khỏi file — không có cờ này thì service connector cũ
+# vẫn chạy và phải gõ tay `docker service rm`, trái nguyên tắc "mọi thứ bằng IaC/script".
+docker stack deploy --prune -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
 
 # Chờ các service hội tụ (tối đa 180s) trước khi kết luận.
 converged=0
