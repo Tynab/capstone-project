@@ -48,10 +48,14 @@ services:
         preferences:
           - spread: node.id
       # start-first + rollback: cập nhật hỏng thì swarm tự quay về bản cũ.
+      # monitor phải LỚN HƠN start-period của healthcheck (20s) + interval (15s):
+      # mặc định của swarm là 5s, quá ngắn nên task mới bị coi là hỏng trước khi
+      # kịp healthy -> swarm rollback dù image hoàn toàn tốt (đã gặp thật).
       update_config:
         order: start-first
         failure_action: rollback
-        delay: 5s
+        delay: 10s
+        monitor: 45s
       restart_policy:
         condition: on-failure
 
@@ -70,7 +74,8 @@ services:
       update_config:
         order: start-first
         failure_action: rollback
-        delay: 5s
+        delay: 10s
+        monitor: 45s
       restart_policy:
         condition: on-failure
 
