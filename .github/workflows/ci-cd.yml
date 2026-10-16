@@ -33,6 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
+            frontend/package-lock.json
             e2e/package-lock.json
 
       # e2e tải binary mongod thật (~80MB) ở lần đầu; cache lại cho các lần sau.
@@ -45,6 +46,7 @@ jobs:
       - name: Cài dependency
         run: |
           npm ci --prefix backend
+          npm ci --prefix frontend
           npm ci --prefix e2e
 
       # Unit test của backend chạy bằng node --test (không cần service ngoài).
@@ -53,6 +55,14 @@ jobs:
 
       - name: Chạy e2e tầng API
         run: npm --prefix e2e run test:api
+
+      # Test qua Chrome thật: đây là tầng DUY NHẤT bắt được lỗi app trắng màn hình
+      # do lệch hợp đồng backend/frontend (test API vẫn xanh trong ca đó).
+      - name: Chạy e2e qua trình duyệt thật
+        run: npm --prefix e2e run test:browser
+        env:
+          # Runner ubuntu-latest có sẵn Chrome ở đường dẫn này.
+          CHROME_PATH: /usr/bin/google-chrome
 
   build:
     name: Build va push image
