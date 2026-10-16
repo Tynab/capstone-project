@@ -4,6 +4,7 @@ import cors from "cors"
 import helmet from "helmet"
 import dotenv from "dotenv"
 import logger from "./utils/logger.js"
+import { hasMailConfig } from "./services/smtpConfig.js"
 
 import userRouter from "./routes/userRoute.js"
 import taskRouter from "./routes/taskRoute.js"
@@ -24,8 +25,10 @@ mongoose.set('strictQuery', true);
 
 // Thiếu thông tin Gmail thì không mail nào gửi được, nhưng /forgotPassword vẫn trả 200
 // với thông báo "đã gửi link" -> người dùng chờ một link không bao giờ tới. Cảnh báo sớm.
-if (!process.env.GMAIL_USERNAME || !process.env.GMAIL_PASSWORD) {
-    logger.warn("CẢNH BÁO: GMAIL_USERNAME/GMAIL_PASSWORD chưa cấu hình — chức năng quên mật khẩu sẽ không gửi được mail (API vẫn trả 200).")
+// Dùng hasMailConfig() chứ không kiểm riêng GMAIL_*: trong lab SMTP_HOST=mailpit
+// nên mail VẪN gửi được, cảnh báo cũ in sai và làm người đọc tưởng hỏng chức năng.
+if (!hasMailConfig()) {
+    logger.warn("CẢNH BÁO: chưa cấu hình SMTP_HOST lẫn GMAIL_USERNAME/GMAIL_PASSWORD — chức năng quên mật khẩu sẽ không gửi được mail (API vẫn trả 200).")
 }
 
 // Sau reverse proxy (nginx trong Docker), bật TRUST_PROXY=1 để req.ip là IP thật của client.

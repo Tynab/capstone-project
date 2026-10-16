@@ -69,7 +69,9 @@ Cổng truy cập từ máy bạn (qua mạng host-only): **80** app · **9090**
 | `node-exporter` | `prom/node-exporter` | `global` | mọi node | — | mount `/proc`, `/sys` |
 | `cadvisor` | `gcr.io/cadvisor/cadvisor` | `global` | mọi node | — | mount `/`, `/var/run/docker.sock` |
 
-Mọi service đều có `deploy.update_config` (`order: start-first`, `failure_action: rollback`) và healthcheck; mạng chung là overlay `capstone`.
+`backend` và `frontend` có `deploy.update_config` (`order: start-first`, `failure_action: rollback`) và `restart_policy`; các service còn lại có `restart_policy` (riêng `mongo`, export và các service ghim một node không cần update_config vì chỉ chạy 1 replica). Healthcheck mức container chỉ có ở 2 image tự build (`backend` gọi `/api/health`, `frontend` gọi `/`) — các image bên thứ ba (mongo, prometheus, grafana, exporter, mailpit) không khai báo healthcheck mà được giám sát từ bên ngoài: Prometheus `up`, blackbox `probe_success`, `mongodb_up`.
+
+Mạng chung là overlay `capstone`; UFW được bật trên cả hai node với đúng các cổng cần thiết (22, 2377, 7946/tcp+udp, 4789/udp, 80, 9090, 3001, 8025, 9100, 8080) — thiếu 9100/8080 là mất 4/7 target Prometheus.
 
 Ghi chú triển khai cho bảng trên:
 

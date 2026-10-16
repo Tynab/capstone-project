@@ -11,7 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Tag image để deploy lại (rollback). Bỏ trống = dùng bản mới nhất của lần chạy này."
+        # Chạy tay KHÔNG build gì cả: điền tag thì deploy đúng tag đó (rollback),
+        # bỏ trống thì chỉ chạy job test.
+        description: "Tag image cần deploy (vd: f692a61) — dùng để rollback. Bỏ trống = chỉ chạy test."
         required: false
 
 concurrency:

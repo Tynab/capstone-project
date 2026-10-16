@@ -78,3 +78,13 @@
     - { port: "9090", proto: tcp }   # prometheus
     - { port: "3001", proto: tcp }   # grafana
     - { port: "8025", proto: tcp }   # mailpit
+    # node-exporter và cAdvisor publish cổng kiểu host trên TỪNG node, nên phải mở
+    # ở đây; thiếu hai cổng này thì Prometheus mất 4/7 target khi bật UFW.
+    - { port: "9100", proto: tcp }
+    - { port: "8080", proto: tcp }
+
+- name: UFW — bật tường lửa
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming

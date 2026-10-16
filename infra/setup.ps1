@@ -154,9 +154,24 @@ if (-not (Test-Path $vagrantfile)) {
             # Lỗi card host-only hỏng — đã gặp thật trên Windows 11 + VBox 7.2.20.
             # Sửa rồi thử lại MỘT lần; nhận diện bằng đúng thông báo lỗi để không
             # "sửa" nhầm khi vagrant up hỏng vì lý do khác.
-            Write-Warning "Card host-only cua VirtualBox bi hong -> chay infra/fix-hostonly.ps1 (se hien UAC) roi thu lai."
-            Start-Process powershell -Verb RunAs -Wait -ArgumentList @(
-                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "fix-hostonly.ps1"))
+            # Tên interface hỏng nằm ngay trong thông báo lỗi:
+            #   ... internal network 'HostInterfaceNetworking-<TEN>' ...
+            # Lấy từ đây thay vì dò danh sách bridgedifs (danh sách đó còn cache tên
+            # adapter đã xoá nên dò theo nó sẽ sửa nhầm máy đang khoẻ).
+            $brokenName = ""
+            if ($upLog -match "HostInterfaceNetworking-(.+?)'") { $brokenName = $Matches[1] }
+
+            if (-not $brokenName) {
+                Write-Warning "Card host-only cua VirtualBox bi hong nhung khong doc duoc ten interface tu thong bao loi."
+                Write-Warning "Chay chan doan: powershell -File infra\fix-hostonly.ps1"
+            } else {
+                Write-Warning "Card host-only '$brokenName' bi hong -> sua tu dong (se hien UAC) roi thu lai."
+                # Truyền đường dẫn VBoxManage đã dò được: VirtualBox không phải lúc nào
+                # cũng nằm ở thư mục mặc định.
+                Start-Process powershell -Verb RunAs -Wait -ArgumentList @(
+                    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "fix-hostonly.ps1"),
+                    "-VBoxManage", "`"$vboxExe`"", "-BrokenName", "`"$brokenName`"")
+            }
             $upLog = (& $vagrantExe up 2>&1 | ForEach-Object { $_.ToString() }) -join "`n"
             Write-Host $upLog
         }

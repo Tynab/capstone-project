@@ -137,5 +137,6 @@ Muốn chuyển sang private:
   trên VM này group `docker` vốn tương đương quyền root nên không mở thêm mặt tấn công.
 - Mongo bật auth với tài khoản `capstone`; exporter dùng cùng tài khoản đó.
 - Cổng 9090/3001/8025 chỉ mở trên mạng host-only, không ra internet.
+- **UFW được bật** trên cả 2 node, chỉ mở các cổng cần thiết (22, 2377, 7946, 4789, 80, 9090, 3001, 8025, 9100, 8080). Thêm service publish cổng mới thì phải thêm cổng đó vào role `common`, nếu không Prometheus/truy cập sẽ mất.
 - `TRUST_PROXY=1` bắt buộc vì backend nằm sau nginx — thiếu nó thì rate limit
   đếm chung một IP cho mọi request.

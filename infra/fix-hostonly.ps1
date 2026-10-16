@@ -1,46 +1,67 @@
 ﻿# Sửa adapter host-only của VirtualBox khi VM không gắn được card mạng, lỗi:
 #   VERR_INTNET_FLT_IF_NOT_FOUND
 #
-# Nguyên nhân đã gặp thật trên Windows 11 + VirtualBox 7.2.20: adapter do trình
-# cài tạo ra bị hỏng trạng thái — nó nằm trong cả danh sách host-only (Up) lẫn
-# danh sách bridged, và VBoxManage cảnh báo "Interface ... is of type bridged".
-# Cách sửa: tạo một adapter host-only MỚI rồi xoá những cái đang ở trạng thái hỏng.
+# Cách dùng:
+#   setup.ps1 tự gọi script này khi `vagrant up` gặp lỗi, và truyền -BrokenName là
+#   tên interface lấy TỪ CHÍNH thông báo lỗi của VirtualBox (chính xác, không đoán).
+#   Chạy tay không tham số: chỉ in chẩn đoán, không đụng gì.
 #
-# Cần quyền admin (tạo/xoá card mạng ảo). setup.ps1 tự gọi script này khi gặp lỗi.
+# Vì sao không tự "dò" adapter hỏng: danh sách bridgedifs của VirtualBox còn giữ
+# tên adapter đã xoá (cache của VBoxSVC), nên dò theo danh sách đó sẽ báo động giả
+# trên máy đang khoẻ và tạo adapter thừa — đã gặp thật khi kiểm chứng.
+#
+# Cần quyền admin (tạo/xoá card mạng ảo).
+param(
+    [string]$VBoxManage = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe",
+    [string]$BrokenName = ""
+)
+
 $ErrorActionPreference = "Stop"
-$vbm = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+
+if (-not (Test-Path $VBoxManage)) {
+    Write-Warning "Khong tim thay VBoxManage tai: $VBoxManage"
+    Write-Warning "Chay lai kem duong dan dung: -VBoxManage 'D:\duong\dan\VBoxManage.exe'"
+    exit 1
+}
 
 function Get-HostOnlyNames {
-    (& $vbm list hostonlyifs 2>&1) |
+    (& $VBoxManage list hostonlyifs 2>&1) |
         Select-String '^Name:' |
         ForEach-Object { ($_ -split ':', 2)[1].Trim() }
 }
 
-# Adapter nằm trong danh sách bridged nhưng tên là host-only = adapter hỏng.
-$brokenNames = (& $vbm list bridgedifs 2>&1) |
-    Select-String -Pattern '^Name:\s+VirtualBox Host-Only Ethernet Adapter.*$' |
-    ForEach-Object { ($_.Line -split ':', 2)[1].Trim() }
-
-if (-not $brokenNames) {
-    Write-Host "Khong thay adapter host-only hong. Khong can sua."
+if (-not $BrokenName) {
+    Write-Host "Che do chan doan (khong sua gi). Host-only hien co:"
+    Get-HostOnlyNames | ForEach-Object { Write-Host "  $_" }
+    Write-Host ""
+    Write-Host "Neu 'vagrant up' bao VERR_INTNET_FLT_IF_NOT_FOUND, ten interface can sua"
+    Write-Host "nam ngay trong thong bao loi, dang: HostInterfaceNetworking-<TEN>. Chay lai:"
+    Write-Host "  powershell -File infra\fix-hostonly.ps1 -BrokenName '<TEN>'"
     exit 0
 }
-Write-Host "Adapter hong: $($brokenNames -join ', ')"
 
-# Tạo adapter mới trước khi xoá cái cũ, để không có lúc nào mất sạch host-only.
-$createOut = & $vbm hostonlyif create 2>&1
+Write-Host "Interface hong (theo thong bao loi cua VirtualBox): $BrokenName"
+
+# Tạo adapter mới TRƯỚC khi xoá cái cũ, để không có lúc nào mất sạch host-only.
+$createOut = (& $VBoxManage hostonlyif create 2>&1) | ForEach-Object { $_.ToString() }
 $createOut | ForEach-Object { Write-Host $_ }
-$newName = (Get-HostOnlyNames | Select-Object -Last 1)
-if (-not $newName) { throw "Khong tao duoc adapter host-only moi" }
+# VBoxManage in: Interface 'VirtualBox Host-Only Ethernet Adapter #2' was successfully created
+$newName = ($createOut |
+    Select-String -Pattern "Interface '(.+?)' was successfully created" |
+    Select-Object -First 1).Matches[0].Groups[1].Value
 
-& $vbm hostonlyif ipconfig "$newName" --ip 192.168.56.1 --netmask 255.255.255.0 2>&1 |
+if (-not $newName -or $newName -notin (Get-HostOnlyNames)) {
+    throw "Khong xac dinh duoc adapter moi (doc tu output create). Dung lai de tranh dat IP sai cho."
+}
+
+& $VBoxManage hostonlyif ipconfig "$newName" --ip 192.168.56.1 --netmask 255.255.255.0 2>&1 |
     ForEach-Object { Write-Host $_ }
 
-foreach ($name in $brokenNames) {
-    if ($name -eq $newName) { continue }
-    Write-Host "Xoa adapter hong: $name"
-    & $vbm hostonlyif remove "$name" 2>&1 | ForEach-Object { Write-Host $_ }
+if ($BrokenName -eq $newName) {
+    throw "Ten adapter hong trung voi adapter vua tao ($newName) — kiem tra lai tham so -BrokenName."
 }
+Write-Host "Xoa adapter hong: $BrokenName"
+& $VBoxManage hostonlyif remove "$BrokenName" 2>&1 | ForEach-Object { Write-Host $_ }
 
 Write-Host "Xong. Host-only hien co:"
 Get-HostOnlyNames | ForEach-Object { Write-Host "  $_" }
