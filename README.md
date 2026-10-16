@@ -44,7 +44,7 @@ Công khai qua **Cloudflare Tunnel** (bật/gỡ bằng một biến trong `infr
 
 | Thành phần | Công nghệ | Vai trò |
 |---|---|---|
-| [frontend/](frontend/) | React 18 (CRA) + Tailwind, phục vụ bằng nginx | Giao diện; nginx proxy `/api` sang backend nên cùng origin, không cần CORS |
+| [frontend/](frontend/) | React 18 + Vite + Tailwind, phục vụ bằng nginx | Giao diện; nginx proxy `/api` sang backend nên cùng origin, không cần CORS |
 | [backend/](backend/) | Express 4 + Mongoose 6 (ESM), JWT | API: user, task, quên/đặt lại mật khẩu; rate limit theo IP |
 | [infra/](infra/) | Vagrant + Ansible → Docker Swarm | Dựng 2 VM, cài Docker, join swarm, sinh secret, deploy stack, cài runner |
 | [e2e/](e2e/) | Node + mongodb-memory-server + puppeteer-core | Test trên hạ tầng thật: 43 khẳng định tầng API + 13 khẳng định qua Chrome |
@@ -124,7 +124,7 @@ không phải bấm tay.
 
 ```
 backend/     API Express + Mongoose (ESM)      · chi tiết: backend/CLAUDE.md
-frontend/    React (CRA) + nginx               · chi tiết: frontend/README.md
+frontend/    React + Vite + nginx               · chi tiết: frontend/README.md
 e2e/         Test trên hạ tầng thật            · chi tiết: e2e/README.md
 infra/       Vagrant + Ansible → Docker Swarm  · chi tiết: infra/README.md
 docs/        Đặc tả thiết kế + kế hoạch thi công phần hạ tầng

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dự án này là gì
 
-Ứng dụng todo 3 phần — React (CRA) + Express/Mongoose + MongoDB — nhưng **mục đích thật của repo là bài cuối khóa CyberSoft DevOps 04**. Đề bài yêu cầu **2 hạng mục**: dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus** (file đề bài gốc `du-an-cuoi-khoa.md` đã được xoá sau khi hoàn thành — xem git history nếu cần đối chiếu).
+Ứng dụng todo 3 phần — React (Vite) + Express/Mongoose + MongoDB — nhưng **mục đích thật của repo là bài cuối khóa CyberSoft DevOps 04**. Đề bài yêu cầu **2 hạng mục**: dựng CICD bằng **GitHub Actions** và dựng hệ thống giám sát **Grafana + Prometheus** (file đề bài gốc `du-an-cuoi-khoa.md` đã được xoá sau khi hoàn thành — xem git history nếu cần đối chiếu).
 
 Cả hai hạng mục **đã có trong repo**: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) (job `test` → `build` đẩy image lên GHCR → `deploy` chạy trên GitHub self-hosted runner đặt trong VM manager) và [infra/](infra/) (Vagrant + Ansible dựng Docker Swarm 2 node, stack có Prometheus + Grafana + node-exporter + cAdvisor + mongodb-exporter + blackbox-exporter). Cách dựng và vận hành: [infra/README.md](infra/README.md).
 
@@ -25,7 +25,7 @@ Stack hiện có **13 service** (12 khi chưa bật Cloudflare Tunnel): thêm `p
 | Thư mục | Vai trò | Manifest chi tiết |
 |---|---|---|
 | [backend/](backend/) | API Express 4 + Mongoose 6, ESM, JWT, reset password qua mail | [backend/CLAUDE.md](backend/CLAUDE.md) |
-| [frontend/](frontend/) | CRA 5 + React 18 + Tailwind, JavaScript thuần | [frontend/CLAUDE.md](frontend/CLAUDE.md) |
+| [frontend/](frontend/) | Vite 8 + React 18 + Tailwind, JavaScript thuần | [frontend/CLAUDE.md](frontend/CLAUDE.md) |
 | [e2e/](e2e/) | Test trên hạ tầng thật: mongod thật + backend + Chrome thật | [e2e/README.md](e2e/README.md) |
 | [infra/](infra/) | Vagrant + Ansible dựng swarm 2 node, stack và giám sát | [infra/README.md](infra/README.md) |
 
@@ -54,13 +54,15 @@ npm run migrate:userid     # migration một lần cho task cũ có userId kiể
 ```bash
 cd frontend
 npm install
-npm start                  # dev server tại http://localhost:3000
-npm run build              # build production vào build/ (đã có sẵn, bị .gitignore chặn)
+npm start                  # dev server Vite tại http://localhost:3000 (cổng đọc từ PORT)
+npm run build              # build production vào dist/ (bị .gitignore chặn)
+npm test                   # vitest run — chạy MỘT lần rồi thoát, không có watch mode
+npm run lint               # ESLint 9 (flat config) — build KHÔNG chạy lint, phải gọi riêng
 npm run format             # prettier --write "src/**/*.{js,jsx,css}" — chỉ áp dụng cho src/
 ```
 
-- `npm test` là jest ở watch mode. Có bộ unit test 47 ca (reducer, utils, lớp api, component Login/ResetPassword/CreateTask/Task — mock toàn bộ `src/api/*`, không cần server); file test đặt cạnh mã nguồn dạng `*.test.js`/`*.test.jsx`, matcher jest-dom nạp qua `src/setupTests.js`. Chạy một lần: `CI=true npm test` hoặc `npm test -- --watchAll=false`.
-- Chỉ dùng npm — `yarn.lock` đã bị xoá (trước đây tồn tại song song hai lockfile khiến npm và yarn dùng hai cây dependency khác nhau).
+- Bộ unit test 47 ca (reducer, utils, lớp api, component Login/ResetPassword/CreateTask/Task — mock toàn bộ `src/api/*`, không cần server); file test đặt cạnh mã nguồn dạng `*.test.js`/`*.test.jsx`, matcher jest-dom nạp qua `src/setupTests.js` (entry `/vitest`). Muốn watch: `npm run test:watch`.
+- Chỉ dùng npm — `yarn.lock` đã bị xoá (trước đây tồn tại song song hai lockfile khiến npm và yarn dùng hai cây dependency khác nhau). Khi thêm/bớt gói, chạy bằng đúng npm của CI (`npx --yes npm@10 install …`) rồi kiểm `npx --yes npm@10 ci --dry-run` — lock sinh bằng npm 11 bị npm 10 từ chối, CI đỏ ngay ở bước cài dependency.
 
 ### E2E — [e2e/](e2e/) — tầng duy nhất chạy trên hạ tầng thật
 
@@ -81,7 +83,7 @@ Khi đổi nơi chạy, phải sửa **đồng thời** bốn biến sau — l�
 
 | Biến | Ở đâu | Ghi chú |
 |---|---|---|
-| `REACT_APP_API_URL` | `frontend/.env` (chưa có trong repo — tạo từ `frontend/.env.example`) | CRA nhúng vào bundle **lúc build** → đổi phải build lại. Mặc định `http://localhost:8000/api` ([frontend/src/api/client.js](frontend/src/api/client.js)) |
+| `VITE_API_URL` | `frontend/.env` (chưa có trong repo — tạo từ `frontend/.env.example`) | Vite nhúng vào bundle **lúc build** → đổi phải build lại. Mặc định `http://localhost:8000/api` ([frontend/src/api/client.js](frontend/src/api/client.js)) |
 | `PORT` | `backend/.env` | `8000`; fallback trong mã là `8001` |
 | `CORS_ORIGIN` | `backend/.env` | Danh sách origin phân tách bằng dấu phẩy; origin lạ bị từ chối bằng cách không gắn header CORS |
 | `FRONTEND_URL` | `backend/.env` (hiện chưa đặt — đang dùng mặc định; mẫu ở `.env.example`) | Gốc frontend dùng để dựng link reset trong email; mặc định trỏ tới domain Firebase cũ |
@@ -106,7 +108,7 @@ Mọi response là object JSON: `message` cho người đọc, key theo tài ngu
 
 ## Kiểm chứng trước khi báo xong
 
-Unit test của backend (`npm test`, 15 ca) chỉ phủ hàm thuần + lõi rateLimit; unit test frontend (47 ca) mock toàn bộ lớp API; linter duy nhất là ESLint mặc định của CRA chạy kèm `start`/`build` — không đủ lưới để chặn lỗi tích hợp. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
+Unit test của backend (`npm test`, 15 ca) chỉ phủ hàm thuần + lõi rateLimit; unit test frontend (47 ca) mock toàn bộ lớp API; linter là ESLint 9 chạy riêng bằng `npm run lint` (Vite không tự chạy lint khi build — CI có bước riêng) — vẫn không đủ lưới để chặn lỗi tích hợp. Cách duy nhất để biết thay đổi thật sự chạy (và đây là lý do bộ test e2e tồn tại):
 
 1. Sửa backend hoặc hợp đồng API → `cd e2e && npm run test:api`.
 2. Đụng vào UI/state/reducer → thêm cả `npm run test:browser` **và** `CI=true npm --prefix frontend test`; test API xanh không chứng minh app không trắng màn hình (đã từng có đúng tình huống đó), còn unit test frontend không dựng nổi luồng thật xuyên tầng.

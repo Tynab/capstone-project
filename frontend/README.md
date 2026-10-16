@@ -1,7 +1,7 @@
 # Frontend — ứng dụng todo (React)
 
 Giao diện todo: đăng ký/đăng nhập, thêm và quản lý task, quên/đặt lại mật khẩu.
-Create React App 5 + React 18 + Tailwind, JavaScript thuần (không TypeScript).
+**Vite 8** + React 18 + Tailwind, JavaScript thuần (không TypeScript). Test bằng Vitest.
 
 ## Chạy
 
@@ -11,9 +11,9 @@ npm start        # http://localhost:3000
 ```
 
 Cần backend đang chạy (mặc định `http://localhost:8000/api`) — xem [../backend/README.md](../backend/README.md).
-Muốn trỏ sang API khác thì đặt `REACT_APP_API_URL` trong `.env` (mẫu ở [.env.example](.env.example)).
+Muốn trỏ sang API khác thì đặt `VITE_API_URL` trong `.env` (mẫu ở [.env.example](.env.example)).
 
-> `REACT_APP_*` được CRA nhúng vào bundle **lúc build**, không phải lúc chạy — đổi giá trị
+> `VITE_*` được Vite nhúng vào bundle **lúc build**, không phải lúc chạy — đổi giá trị
 > thì phải build lại.
 
 ## Cấu trúc
@@ -28,13 +28,15 @@ src/
 └─ utils/       đọc-ghi token an toàn, format thời gian, đọc thông báo lỗi
 ```
 
-`App.js` là app shell: giữ state dùng chung, khai báo toàn bộ route, và tự nạp
-`/user/getUser` + `/task/getTask` mỗi khi token đổi.
+`index.html` (ở gốc thư mục này) → `src/main.jsx` → `src/App.jsx`. `App.jsx` là app shell: giữ state
+dùng chung, khai báo toàn bộ route, và tự nạp `/user/getUser` + `/task/getTask` mỗi khi token đổi.
 
 ## Build & deploy
 
 ```bash
-npm run build    # sản phẩm vào build/ (bị .gitignore chặn)
+npm run build    # sản phẩm vào dist/ (bị .gitignore chặn)
+npm test         # vitest run — 47 unit test, chạy một lần rồi thoát
+npm run lint     # ESLint 9 (flat config)
 npm run format   # prettier cho src/
 ```
 

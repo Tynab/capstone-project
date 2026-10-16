@@ -4,44 +4,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tổng quan
 
-Frontend `todo-app`: Create React App 5 (`react-scripts` 5.0.1) + React 18, JavaScript thuần (không TypeScript). Gọi API backend Express ở `../backend` — đọc `../backend/CLAUDE.md` trước khi động vào phần API.
+Frontend `todo-app`: **Vite 8 + React 18**, JavaScript thuần (không TypeScript). Gọi API backend Express ở `../backend` — đọc `../backend/CLAUDE.md` trước khi động vào phần API.
 
-Version control: repo git ở **gốc dự án `../`** (không phải trong `frontend/`), `.gitignore` ở gốc lo `node_modules/`, `.env`, `frontend/build/`.
+> **Đã bỏ Create React App** (react-scripts 5.0.1 — bản cuối cùng, không còn bản vá). Chuyển sang Vite để dứt điểm: 1113 gói trong cây react-scripts biến mất, `npm audit` của frontend từ 92 mục còn 9, và không cần `overrides` nào nữa (khối `overrides` cũ đã xoá sạch).
 
-Đây là phần frontend của dự án DevOps cuối khóa (đề bài: dựng CICD GitHub Actions + hệ thống giám sát Grafana/Prometheus — cả hai đã dựng xong, xem [../infra/README.md](../infra/README.md)). Đóng gói: [Dockerfile](Dockerfile) (build CRA rồi phục vụ bằng nginx, proxy `/api` sang backend) — image được CI build và deploy lên swarm, không build tại máy Windows.
+Version control: repo git ở **gốc dự án `../`** (không phải trong `frontend/`), `.gitignore` ở gốc lo `node_modules/`, `.env`, `frontend/dist/`.
+
+Đây là phần frontend của dự án DevOps cuối khóa (đề bài: dựng CICD GitHub Actions + hệ thống giám sát Grafana/Prometheus — cả hai đã dựng xong, xem [../infra/README.md](../infra/README.md)). Đóng gói: [Dockerfile](Dockerfile) (build bằng Vite rồi phục vụ bằng nginx, proxy `/api` sang backend) — image được CI build và deploy lên swarm, không build tại máy Windows.
 
 ## Lệnh thường dùng
 
 ```bash
 npm install        # bắt buộc trước khi chạy bất cứ thứ gì
-npm start          # dev server tại http://localhost:3000
-npm run build      # build production vào build/
-npm test           # jest watch mode — 47 unit test (reducer, utils, lớp api, component)
+npm start          # dev server Vite tại http://localhost:3000 (cổng đọc từ PORT)
+npm run build      # build production vào dist/
+npm run preview    # xem thử bản build
+npm test           # vitest run — 47 unit test (reducer, utils, lớp api, component)
+npm run lint       # ESLint 9 (flat config: eslint.config.mjs)
 ```
 
-- Chạy test một lần (không watch): `npm test -- --watchAll=false` hoặc `CI=true npm test`. Bộ unit test này mock toàn bộ `src/api/*` nên **không cần server**; luồng thật xuyên tầng (đăng ký → CRUD → F5 → đăng xuất) vẫn do `../e2e` phủ — test API xanh không chứng minh app không trắng màn hình.
+- `npm test` chạy MỘT lần rồi thoát (`vitest run`) — không có watch mode như jest của CRA. Muốn watch: `npm run test:watch`. Bộ unit test này mock toàn bộ `src/api/*` nên **không cần server**; luồng thật xuyên tầng (đăng ký → CRUD → F5 → đăng xuất) vẫn do `../e2e` phủ — test API xanh không chứng minh app không trắng màn hình.
 - Chỉ dùng **npm** — `yarn.lock` đã bị xoá (trước đây tồn tại song song hai lockfile nên npm và yarn có thể dùng hai cây dependency khác nhau).
-- Không có script lint riêng; ESLint của CRA (`eslintConfig` trong `package.json`) chạy kèm cả `start` lẫn `build`, và **`npm run build` fail nếu có lint error** (tắt bằng `DISABLE_ESLINT_PLUGIN=true`).
-- Tailwind v3: CRA 5 tự chèn plugin `tailwindcss` khi thấy `tailwind.config.js` ở **gốc `frontend/`** — thư mục chạy `npm` (`react-scripts@5.0.1` dò theo `paths.appPath`, không phải gốc repo). **Thêm `postcss.config.js` sẽ không có tác dụng.**
-- Cấu hình API qua `.env` (xem `.env.example`) — CRA chỉ nhúng biến có tiền tố `REACT_APP_`.
+- **`npm run build` KHÔNG chạy ESLint** (CRA thì có — build đỏ nếu lint lỗi). Vì vậy lint là bước riêng: `npm run lint`, và CI chạy nó thành một bước độc lập. Đừng bỏ bước đó, mất là mất luôn lưới lint.
+- Tailwind v3 chạy qua **`postcss.config.js` ở gốc `frontend/`** (Vite đọc file này; CRA thì tự cấu hình bên trong nên file này từng vô tác dụng — nay ngược lại: thiếu nó là mất sạch style).
+- Cấu hình API qua `.env` (xem `.env.example`) — Vite chỉ nhúng biến có tiền tố **`VITE_`** (trước đây là `REACT_APP_`).
 
 ## Kiến trúc
 
-`src/index.js` → `src/App.js`. `App.js` là toàn bộ app shell: `BrowserRouter` + toàn bộ `Routes`, giữ toàn bộ state dùng chung và cấp cả 2 context (các component con vẫn có `useState` cục bộ riêng).
+`index.html` (ở **gốc `frontend/`**, Vite đòi vậy — CRA để trong `public/`) → `src/main.jsx` → `src/App.jsx`. `App.jsx` là toàn bộ app shell: `BrowserRouter` + toàn bộ `Routes`, giữ toàn bộ state dùng chung và cấp cả 2 context (các component con vẫn có `useState` cục bộ riêng).
 
 ### Lớp gọi API — component không bao giờ gọi axios trực tiếp
 
-- [src/api/client.js](src/api/client.js): instance axios duy nhất. `baseURL` lấy từ `REACT_APP_API_URL`, mặc định `http://localhost:8000/api`.
+- [src/api/client.js](src/api/client.js): instance axios duy nhất. `baseURL` lấy từ `VITE_API_URL`, mặc định `http://localhost:8000/api`.
 - **Request interceptor** tự gắn `Authorization: Bearer` cho mọi request. Không dựng header bằng tay ở chỗ gọi.
 - **Response interceptor cho 401**: xoá token và chuyển hướng `/login`, **trừ** 4 đường dẫn trong `PUBLIC_PATHS` (login/register/forgotPassword/resetPassword). Phải giữ nguyên danh sách này — người dùng có token cũ mở link reset trong email sẽ mất token trên query string nếu bị đá sang `/login`.
 - [src/api/authApi.js](src/api/authApi.js), [src/api/taskApi.js](src/api/taskApi.js): mọi lời gọi API đi qua đây; component không cần biết đường dẫn HTTP.
 
 ### State và context
 
-- 3 `useReducer` tại `App.js`: `tasks` ([taskReducer.js](src/reducer/taskReducer.js)), `userToken` ([tokenReducer.js](src/reducer/tokenReducer.js)), `user` ([userReducer.js](src/reducer/userReducer.js)).
+- 3 `useReducer` tại `App.jsx`: `tasks` ([taskReducer.js](src/reducer/taskReducer.js)), `userToken` ([tokenReducer.js](src/reducer/tokenReducer.js)), `user` ([userReducer.js](src/reducer/userReducer.js)).
 - 2 context: `TokenContext` = `{userToken, tokenDispatch, user, userDispatch}`, `TaskContext` = `{tasks, dispatch}`; khai báo ở `src/context/*.js` (là `.js` vì chỉ có `createContext`, không JSX). Cả hai `value` đều bọc `useMemo` — không bọc thì mọi thao tác task làm re-render gần cả cây.
-- `App.js` tự fetch `/user/getUser` + `/task/getTask` trong `useEffect` phụ thuộc `userToken`, có cờ `cancelled` để không ghi state từ request cũ.
-- [index.js](src/index.js) bọc app trong `<React.StrictMode>` và `<ErrorBoundary>` → ở dev mọi `useEffect` chạy 2 lần nên hai fetch trên bị gọi đôi; `ErrorBoundary` là lưới an toàn vì `taskReducer` **ném Error** với action lạ.
+- `App.jsx` tự fetch `/user/getUser` + `/task/getTask` trong `useEffect` phụ thuộc `userToken`, có cờ `cancelled` để không ghi state từ request cũ.
+- [main.jsx](src/main.jsx) bọc app trong `<React.StrictMode>` và `<ErrorBoundary>` → ở dev mọi `useEffect` chạy 2 lần nên hai fetch trên bị gọi đôi; `ErrorBoundary` là lưới an toàn vì `taskReducer` **ném Error** với action lạ.
 
 ### Routing
 
@@ -70,7 +74,7 @@ Lỗi luôn đọc qua [getErrorMessage](src/utils/getErrorMessage.js) — đọ
 
 ### UI
 
-- Styling: Tailwind viết trong `className`, cộng CSS thường — `src/App.css` (import ở `App.js` nên là global) và `src/styles/*.css`.
+- Styling: Tailwind viết trong `className`, cộng CSS thường — `src/App.css` (import ở `App.jsx` nên là global) và `src/styles/*.css`.
 - Quy ước thư mục: mọi component là **file phẳng** trong `src/components/` (PascalCase, `.jsx`); chỉ nhóm con mới có thư mục (`common/`, `icons/`, chữ thường). CSS để riêng ở `src/styles/`. Giữ đúng quy ước này khi thêm component mới.
 - Ảnh tĩnh để ở `src/assets/` rồi `import` vào component (webpack băm tên file nên không lo cache). **Không hotlink ảnh từ site ngoài**: ảnh minh hoạ trang đăng ký từng nằm trên `pngtree.com` và luôn trả 403 vì site đó chặn hotlink — nay là `src/assets/register-illustration.png` (đã thu nhỏ 2500x2500 → 625x625, 596KB → 70KB). Ảnh trang đăng nhập vẫn lấy từ `mdbcdn.b-cdn.net`; nếu CDN đó chết thì tải về `src/assets/` theo đúng cách này.
 - [FormAlert](src/components/common/FormAlert.jsx) là component dùng chung hiển thị lỗi/thành công của form (lỗi của từng task trong `Task.jsx` tự render `p role="alert"`, `ErrorBoundary` có màn hình lỗi riêng); [DeleteIcon](src/components/icons/DeleteIcon.jsx) là SVG nội bộ (trước đây là `@mui/icons-material`, kéo cả MUI + emotion vào bundle chỉ để render 1 icon).
@@ -79,30 +83,31 @@ Lỗi luôn đọc qua [getErrorMessage](src/utils/getErrorMessage.js) — đọ
 
 ## Lưu ý khi deploy
 
-- `baseURL` chạy **trong trình duyệt của người dùng**, nên `localhost` ở đó là máy của họ chứ không phải máy chủ. Đặt `REACT_APP_API_URL` lúc build, hoặc tốt hơn là dùng đường dẫn tương đối `/api` + proxy qua nginx (không phải cấu hình CORS, không bị chặn mixed content khi trang chạy https).
+- `baseURL` chạy **trong trình duyệt của người dùng**, nên `localhost` ở đó là máy của họ chứ không phải máy chủ. Đặt `VITE_API_URL` lúc build, hoặc tốt hơn là dùng đường dẫn tương đối `/api` + proxy qua nginx (không phải cấu hình CORS, không bị chặn mixed content khi trang chạy https).
 - `BrowserRouter` đòi SPA fallback (rewrite mọi path về `index.html`), nếu không `/active`, `/resetPassword`… sẽ 404 khi F5. Trong lab, [nginx.conf](nginx.conf) làm việc đó bằng `try_files`. Build giả định phục vụ ở gốc domain (`package.json` không có `homepage`).
 - Link reset password do backend dựng từ `FRONTEND_URL` (mẫu ở `../backend/.env.example`; thiếu biến thì rơi về mặc định `https://todo-app-b96a5.web.app`) — đổi nơi deploy frontend thì phải sửa cả biến đó ở backend, không chỉ sửa repo này.
 - Backend chỉ cho CORS từ các origin trong `CORS_ORIGIN` (`.env` của backend). Đổi tên miền frontend thì phải thêm vào đó.
 
 ## Phụ thuộc và cảnh báo bảo mật
 
-`react-scripts` là **5.0.1 — bản phát hành cuối cùng của CRA** và không còn được bảo trì: `npm audit` trả
-`fixAvailable = react-scripts@0.0.0` cho hàng loạt gói, tức npm không tìm được bản vá nào. Vì vậy các
-cảnh báo còn lại trong cây của nó chỉ ghim được bằng `overrides` trong `package.json`.
+Sau khi bỏ CRA: **không còn khối `overrides` nào** trong `package.json`. Toàn bộ hơn một nghìn gói của
+cây `react-scripts` (webpack 5, webpack-dev-server 4, svgo 1.x, postcss 7 của resolve-url-loader, uuid,
+node-forge, sprintf-js…) đã biến mất, kéo theo gần hết cảnh báo. Đừng thêm lại `overrides` trừ khi có
+lý do cụ thể và đo được — mỗi lần thêm phải chạy đủ `npm run build`, `npm test`, `npm run lint`, và
+`cd ../e2e && npm run test:browser`.
 
-Nguyên tắc đã áp dụng: **chỉ ghim trong cùng major** (bản vá do chính nhà phát hành phát hành cho nhánh
-đó). Sau khi ghim: `npm audit` của frontend không còn cảnh báo `critical` nào, và còn ~26 cặp
-(gói, advisory) — tất cả đòi nhảy major nên **cố ý để nguyên**, gồm ba gói chưa có bản vá ở bất kỳ
-phiên bản nào (`braces <= 3.0.3`, `node-forge <= 1.4.0`, `sprintf-js <= 1.1.3`). Nhóm này nằm trong
-công cụ build/dev-server (`webpack-dev-server`, `http-proxy-middleware`, `svgo 1.x`, `postcss 7` của
-`resolve-url-loader`, `uuid`, `react-router 6`) — **không vào bundle production**. Muốn sạch hoàn toàn
-thì phải bỏ CRA (chuyển sang Vite), là việc riêng, không gộp vào đợt vá bảo mật.
+Vài cảnh báo còn lại (nếu có) đều nằm ở gói **chưa có bản vá ở bất kỳ phiên bản nào** (`braces`,
+`node-forge`, `sprintf-js` từng rơi vào nhóm này) — nhóm đó chỉ hết khi gói rời khỏi cây dependency.
 
-Mỗi lần thêm/sửa `overrides` phải chạy đủ: `npm run build` (bắt lỗi webpack/postcss), `CI=true npm test`,
-`cd ../e2e && npm run test:browser`, **và `npm ci --dry-run`** — CI dùng `npm ci` nên lockfile lệch
-package.json là job test đỏ ngay từ bước cài dependency. Bài học đã trả giá: xoá `package-lock.json` để
-sinh lại từ đầu làm npm chọn `typescript@7` (không thoả peer `typescript@4.9.5` của `@typescript-eslint`),
-`npm ci` báo "Invalid: lock file's typescript@7.0.2 does not satisfy typescript@4.9.5". Vì vậy hãy sửa
-lockfile theo kiểu TĂNG DẦN (`npm install` trên lock cũ) và kiểm bằng `npm ci --dry-run`, đừng xoá lock
-để dựng lại. Tuyệt đối không chạy `npm audit fix --force`: nó "vá" bằng cách hạ `react-scripts` xuống
-`0.0.0` và làm chết cả `npm start` lẫn `npm run build`.
+**Luôn kiểm bằng `npm ci --dry-run` sau mỗi lần sửa lockfile hoặc `package.json`** — CI dùng `npm ci`
+(CNpm của Node 20 = npm 10) nên lockfile lệch là job test đỏ ngay từ bước cài dependency, trước cả khi
+chạy test. Hai bài học đã trả giá:
+
+1. Xoá `package-lock.json` để sinh lại từ đầu làm npm chọn `typescript@7` (không thoả peer
+   `typescript@4.9.5`) → `npm ci` báo "Invalid: lock file's typescript@7.0.2 does not satisfy
+   typescript@4.9.5". Sửa lockfile theo kiểu TĂNG DẦN (`npm install` trên lock cũ), đừng xoá để dựng lại.
+2. Máy dev dùng npm 11 còn CI dùng npm 10: lock sinh bằng npm 11 có thể bị npm 10 từ chối
+   ("Missing: … from lock file"). Vì vậy khi thêm/bớt gói hãy chạy bằng đúng bản của CI:
+   `npx --yes npm@10 install …`, rồi kiểm `npx --yes npm@10 ci --dry-run`.
+
+Tuyệt đối không chạy `npm audit fix --force`: nó "vá" bằng cách hạ gói xuống bản 0.0.0 và làm chết build.
