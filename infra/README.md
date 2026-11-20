@@ -80,10 +80,34 @@ cd infra && vagrant provision --provision-with ansible
 infra\destroy.cmd -Mode vm
 ```
 
-`start.cmd` chỉ chạy `vagrant up` rồi chờ app trả lời (tối đa 3 phút) — swarm giữ nguyên trạng
-thái trên đĩa nên các service tự lên lại, GitHub runner là systemd enabled nên cũng tự chạy.
-Máy Windows khởi động lại thì VM **không** tự bật; phải chạy script này (hoặc bật VirtualBox
-cho từng VM bằng tay).
+Máy Windows khởi động lại thì VM **không** tự bật; phải chạy `start.cmd`. Điều dễ hiểu nhầm: khi
+Windows tắt máy, VirtualBox **lưu trạng thái** (save state) các VM đang chạy chứ không tắt chúng —
+mã nguồn VBoxHeadless gọi `SaveState` vô điều kiện khi nhận `WM_ENDSESSION`, không có cấu hình đổi
+được. Nên lần bật sau là **resume**, và trên máy chạy qua WHPX thì resume có lúc rất lâu: đo thật
+2026-11-20, manager đứng hình **~28 phút** rồi tự tỉnh, còn worker (cùng 33 ngày ở trạng thái lưu)
+có SSH sau 28 giây. Bản `start.cmd` cũ chỉ gọi `vagrant up` nên hỏng đúng ca này: Vagrant resume
+**tuần tự** và bỏ cuộc ở `boot_timeout` 900s → báo `Timed out while waiting for the machine to boot`
+và **không bao giờ bật worker**.
+
+`start.cmd` hiện làm:
+
+1. Đọc trạng thái **từng** VM. VM đang lưu → resume ngay (`VBoxManage startvm`, không chặn); VM đang
+   tắt → khởi động lạnh bằng `vagrant up <tên>` (để mount `/vagrant`); VM đang chạy → giữ nguyên.
+2. Chờ SSH của cả hai **song song**, tối đa 45 phút (`-WaitMinutes`), báo tiến độ mỗi phút. "Sẵn
+   sàng" là sshd **trả banner** — chỉ mở được TCP thì chưa đủ, vì bộ chuyển NAT của VirtualBox luôn
+   nhận kết nối ở phía host kể cả khi guest đang đứng hình.
+3. Sau resume, đồng hồ guest còn ở ngày bị lưu (đo thật: lùi 33 ngày) → lệch quá 2 phút thì khởi
+   động lại `systemd-timesyncd` để đồng bộ ngay. Swarm dùng TLS nên lệch giờ giữa hai node là hỏng.
+4. Chờ app trả `/api/health` (tối đa 3 phút) — swarm giữ nguyên trạng thái trên đĩa nên các service
+   tự lên lại, GitHub runner là systemd enabled nên cũng tự chạy. Sau **resume**, GitHub còn báo
+   runner `offline` thêm vài phút: phiên long-poll cũ của nó đã chết trong lúc VM bị lưu, runner
+   tự kết nối lại (đo thật: `√ Connected to GitHub` ~1,5 phút sau resume). Không cần làm gì.
+
+Hết 45 phút mà VM vẫn chưa trả lời: VM **vẫn đang chạy**, chạy lại `start.cmd` là chờ tiếp (an toàn).
+`start.cmd -ColdBoot` (có hỏi xác nhận) bỏ trạng thái lưu / tắt cứng VM chưa sẵn sàng rồi khởi động
+lạnh — **tương đương rút điện**, MongoDB ở worker phải tự phục hồi từ journal — nên chỉ dùng khi
+guest thật sự treo. Muốn lần sau không phải resume: trước khi tắt Windows chạy
+`cd infra && vagrant halt` (tắt sạch), lần bật sau là khởi động lạnh.
 
 `setup.cmd` làm tuần tự: kiểm/cài VirtualBox + Vagrant → cảnh báo Hyper-V/VT-x →
 thêm rule firewall cho mạng host-only → sinh khoá SSH lab (`infra/.ssh/lab_key`) →
@@ -223,7 +247,8 @@ Cách trên chạy một container `mongo:6` tạm trong overlay network và tr�
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
 | `vagrant up` lỗi `VERR_INTNET_FLT_IF_NOT_FOUND` | Adapter host-only của VirtualBox hỏng trạng thái (gặp thật trên VBox 7.2.20 + Win11): nó nằm ở cả danh sách host-only lẫn bridged | `setup.ps1` tự phát hiện và chạy `infra/fix-hostonly.ps1` rồi thử lại; chạy tay script đó nếu cần (cần UAC) |
-| `Timed out while waiting for the machine to boot` | Máy chạy qua WHPX boot chậm, hoặc VM treo ở giai đoạn kernel load | `VBoxManage controlvm capstone-worker reset` rồi chạy lại; `boot_timeout` đã đặt 900s trong Vagrantfile |
+| `Timed out while waiting for the machine to boot` khi **resume** (`Resuming suspended VM...`) | VM bị lưu trạng thái lúc Windows tắt máy; resume qua WHPX có lúc đứng hình rất lâu (đo thật ~28 phút) | Dùng `infra\start.cmd` bản hiện tại (resume từng VM, chờ tới 45 phút) — **đừng** gọi `vagrant up` trần. Xem mục "Quy trình" |
+| `Timed out while waiting for the machine to boot` khi **khởi động lạnh** | Máy chạy qua WHPX boot chậm, hoặc VM treo ở giai đoạn kernel load | `VBoxManage controlvm capstone-worker reset` rồi chạy lại; `boot_timeout` đã đặt 900s trong Vagrantfile |
 | VM boot tới `Begin: Loading essential drivers ...` rồi đứng | Treo kernel khi khởi động nguội (không ổn định, đã gặp 2 lần) | `VBoxManage controlvm capstone-worker reset` — boot lại là qua |
 | Worker không có IP `192.168.56.11` | Lần `up` đầu hết thời gian chờ nên bước "configure networks" của Vagrant không chạy | `vagrant reload worker`; hoặc ghi `/etc/netplan/50-vagrant.yaml` với `eth1: 192.168.56.11/24` rồi `netplan apply` |
 | `docker swarm join` báo `certificate ... is not yet valid` | Đồng hồ hai VM lệch nhau (VM không có Guest Additions nên trôi giờ) | Role `common` đã bật NTP và chờ đồng bộ trước khi join; chạy lại provision |
