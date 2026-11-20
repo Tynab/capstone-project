@@ -2,13 +2,15 @@
 # KHÁC setup.cmd: không kiểm/cài công cụ, không chạy Ansible, không đụng tới cấu hình.
 #
 # VÌ SAO KHÔNG CHỈ GỌI `vagrant up` (bản cũ làm vậy và đã hỏng thật ngày 2026-11-20):
-#   - Khi Windows tắt máy, VBoxHeadless tự LƯU TRẠNG THÁI (SaveState) mọi VM đang chạy — mã
-#     nguồn VirtualBox gọi SaveState vô điều kiện khi nhận WM_ENDSESSION, không có cấu hình nào
-#     đổi được thành tắt máy. Nên lần bật sau là RESUME chứ không phải khởi động lạnh.
-#   - Máy bật Hyper-V nên VirtualBox chạy qua WHPX (NEM). Lần đo thật: manager resume xong ở
-#     giây thứ 11 nhưng guest ĐỨNG HÌNH ~28 phút (journal trống tuyệt đối từ lúc lưu tới lúc
-#     tỉnh) rồi tự hồi phục; worker — cũng nằm 33 ngày ở trạng thái lưu — resume có SSH sau 28s.
-#     Tức resume không hỏng tất định, nhưng có lúc rất lâu.
+#   - Khi Windows tắt máy, VBoxHeadless tự LƯU TRẠNG THÁI (SaveState) mọi VM đang chạy — log VM
+#     của máy này ghi "VBoxHeadless: WM_ENDSESSION: waiting for VM termination..." đúng lúc đó,
+#     và mã nguồn VBoxHeadless (nhánh main) gọi SaveState ở đường này mà không đọc cấu hình nào.
+#     Nên lần bật sau là RESUME chứ không phải khởi động lạnh.
+#   - Lần đo thật: manager resume xong ở giây thứ 11 nhưng guest ĐỨNG HÌNH ~28 phút (journal
+#     trống tuyệt đối từ lúc lưu tới lúc tỉnh) rồi tự hồi phục; worker — cũng nằm 33 ngày ở trạng
+#     thái lưu — resume có SSH sau 28s. Tức resume không hỏng tất định, nhưng có lúc rất lâu.
+#     Nguyên nhân lần đứng hình CHƯA xác định (máy chạy VirtualBox qua WHPX/Hyper-V): script này
+#     chờ được nó chứ không ngăn được nó.
 #   - `vagrant up` resume TUẦN TỰ và bỏ cuộc ở boot_timeout (900s): manager kẹt là cả lệnh
 #     thất bại và worker không bao giờ được bật.
 #

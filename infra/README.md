@@ -82,10 +82,13 @@ infra\destroy.cmd -Mode vm
 
 Máy Windows khởi động lại thì VM **không** tự bật; phải chạy `start.cmd`. Điều dễ hiểu nhầm: khi
 Windows tắt máy, VirtualBox **lưu trạng thái** (save state) các VM đang chạy chứ không tắt chúng —
-mã nguồn VBoxHeadless gọi `SaveState` vô điều kiện khi nhận `WM_ENDSESSION`, không có cấu hình đổi
-được. Nên lần bật sau là **resume**, và trên máy chạy qua WHPX thì resume có lúc rất lâu: đo thật
-2026-11-20, manager đứng hình **~28 phút** rồi tự tỉnh, còn worker (cùng 33 ngày ở trạng thái lưu)
-có SSH sau 28 giây. Bản `start.cmd` cũ chỉ gọi `vagrant up` nên hỏng đúng ca này: Vagrant resume
+log VM của chính máy này ghi `VBoxHeadless: WM_ENDSESSION: waiting for VM termination...` đúng lúc
+Windows tắt, và mã nguồn VBoxHeadless (đọc ở nhánh `main`) gọi `SaveState` ở đường đó mà không đọc
+cấu hình nào. Nên lần bật sau là **resume**, và resume có lúc rất lâu: đo thật 2026-11-20, manager
+đứng hình **~28 phút** (journal trống tuyệt đối) rồi tự tỉnh, còn worker (cùng 33 ngày ở trạng thái
+lưu) có SSH sau 28 giây; một lần lưu-rồi-resume thử lại ngay sau đó thì cả hai lên trong vài giây.
+**Nguyên nhân lần đứng hình chưa xác định** (máy này chạy VirtualBox qua WHPX/Hyper-V) — script mới
+chờ được nó chứ không ngăn được nó. Bản `start.cmd` cũ chỉ gọi `vagrant up` nên hỏng đúng ca này: Vagrant resume
 **tuần tự** và bỏ cuộc ở `boot_timeout` 900s → báo `Timed out while waiting for the machine to boot`
 và **không bao giờ bật worker**.
 
