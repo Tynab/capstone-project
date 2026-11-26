@@ -254,8 +254,9 @@ admin với đúng mật khẩu đó.
 |---|---|
 | Xem log một service | `cd infra && vagrant ssh manager -c "sudo docker service logs -f capstone_backend"` |
 | Trạng thái stack | `vagrant ssh manager -c "sudo docker stack services capstone"` |
-| Deploy tay một tag (rollback) | `vagrant ssh manager -c "sudo /opt/capstone/deploy.sh sha-abc1234"` |
-| Provision có kéo ảnh về `:latest` không | **Có** — `deploy.sh` không truyền tag sẽ deploy `${BACKEND_REPO}:latest`; CI thì luôn ghim `sha-xxxx`. Muốn giữ đúng bản đang chạy thì truyền tag như dòng trên |
+| Deploy tay một tag (rollback) | `vagrant ssh manager -c "sudo /opt/capstone/deploy.sh abc1234"` (tag = 7 ký tự đầu của SHA commit, đúng như job `build` đặt — không có tiền tố `sha-`) |
+| Rollback qua GitHub (runner phải online) | `gh workflow run deploy.yml -f image_tag=abc1234` — workflow **Deploy** (`.github/workflows/deploy.yml`) gọi chính `deploy.sh` ở dòng trên với tag đó |
+| Provision có kéo ảnh về `:latest` không | **Có** — `deploy.sh` không truyền tag sẽ deploy `${BACKEND_REPO}:latest`; CI thì luôn ghim tag 7 ký tự đầu của SHA (vd `abc1234`). Muốn giữ đúng bản đang chạy thì truyền tag như dòng trên |
 | Lấy mật khẩu lab (Grafana, Portainer, Mongo, JWT, token tunnel) | cmd: `"%ProgramFiles%\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` · PowerShell: `& "$env:ProgramFiles\Vagrant\bin\vagrant.exe" ssh manager -c "sudo cat /opt/capstone/.env"` |
 | Đăng ký lại runner khi token cũ hết hạn | `$env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token); cd infra; vagrant provision --provision-with ansible` |
 
@@ -291,7 +292,7 @@ Cách trên chạy một container `mongo:6` tạm trong overlay network và tr�
 | Node join với tên `vagrant` | Bước đặt hostname của Vagrant không chạy (lần `up` hết thời gian chờ) | Role `common` đặt hostname theo `lab_hostnames`; cho node rời rồi join lại: `docker swarm leave` rồi provision |
 | Prometheus target `down` | Prometheus/target không cùng overlay network, hoặc exporter chưa lên ở node đó | `docker stack services capstone`, `docker service logs capstone_prometheus` |
 | Service `0/1` hoặc `0/2` | Thiếu RAM/CPU, kéo image lỗi, hoặc constraint không khớp node | `docker service ps --no-trunc <service>` xem cột `ERROR` |
-| Job `deploy` trên GitHub đứng ở `queued` mãi | Runner offline (VM tắt). **`timeout-minutes` KHÔNG cứu ca này** — nó chỉ đếm từ lúc job bắt đầu chạy, còn job đang chờ runner thì GitHub chỉ tự huỷ sau ~24h | `gh api repos/Tynab/capstone-project/actions/runners` xem runner; dựng lại VM bằng `infra\setup.cmd`, hoặc huỷ tay `gh run cancel <id>` |
+| Run **Deploy** (`deploy.yml`) đứng ở `queued` mãi | Runner offline (VM tắt). **`timeout-minutes` KHÔNG cứu ca này** — nó chỉ đếm từ lúc job bắt đầu chạy, còn job đang chờ runner thì GitHub chỉ kết thúc nó (failed) sau ~24h. Từ 2026-11-26 deploy là workflow riêng nên chỉ run Deploy chờ/đỏ; run **CI/CD** và badge của nó không bị kéo theo (trước đó push sau huỷ run đang chờ thành `cancelled` → badge "failing") | `gh api repos/Tynab/capstone-project/actions/runners` xem runner; bật lại VM bằng `infra\start.cmd` (job đang giữ hàng chạy trước, rồi tới bản mới nhất đang chờ), dựng lại bằng `infra\setup.cmd` nếu VM đã bị xoá, hoặc huỷ tay `gh run cancel <id>` |
 | F5 ở `/active` trả 404 | Thiếu SPA fallback trong nginx | Kiểm `frontend/nginx.conf` rồi build lại image |
 | Deploy báo lỗi "service KHÔNG chạy đúng ảnh được yêu cầu" | Swarm đã rollback: task mới bị coi là hỏng trước khi kịp healthy | Kiểm `docker service inspect <svc> --format '{{json .UpdateStatus}}'`; `update_config.monitor` phải LỚN HƠN `start-period` + `interval` của healthcheck (đang là 45s) |
 | Job `deploy` lỗi `Permission denied` (exit 126) | `/opt/capstone` hoặc `.env` không cho user `ghrunner` đi qua/đọc | Role `app` đặt thư mục 0755 và `.env` 0640 group `docker`; kiểm bằng `sudo -u ghrunner sh -c '. /opt/capstone/.env'` |

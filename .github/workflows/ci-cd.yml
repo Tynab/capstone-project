@@ -8,16 +8,18 @@ on:
   # VM manager (user ghrunner, group docker = tương đương root, đọc được
   # /opt/capstone/.env). Muốn có CI cho PR thì bật trước: Settings → Actions →
   # "Require approval for all outside collaborators", rồi mới thêm lại dòng này.
+  # Chạy tay = chỉ chạy job test (build/deploy chỉ chạy khi push lên main).
+  # Rollback KHÔNG còn ở đây mà ở workflow Deploy (deploy.yml) — xem ghi chú cuối file.
   workflow_dispatch:
-    inputs:
-      image_tag:
-        # Chạy tay KHÔNG build gì cả: điền tag thì deploy đúng tag đó (rollback),
-        # bỏ trống thì chỉ chạy job test.
-        description: "Tag image cần deploy (vd: f692a61) — dùng để rollback. Bỏ trống = chỉ chạy test."
-        required: false
 
+# Push mới huỷ push cũ cùng nhánh (đỡ tốn phút chạy). Lần chạy tay (workflow_dispatch =
+# chỉ test) có nhóm RIÊNG: nếu chung nhóm, nó huỷ run push đang chạy trên main thành
+# `cancelled` (badge "failing") và commit đó không được build/deploy tới lần push sau, vì
+# run chạy tay không build. Push GIỮ đúng tên nhóm cũ `ci-<ref>`: push đầu tiên sau khi tách
+# deploy phải còn huỷ được run cũ đang kẹt ở job deploy (nếu không, run đó chờ ~24h rồi
+# kết thúc failed và kéo badge đỏ lại).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('ci-{0}-dispatch', github.ref) || format('ci-{0}', github.ref) }}
   cancel-in-progress: true
 
 jobs:
@@ -86,8 +88,6 @@ jobs:
     # Chỉ build khi mã đã vào main: PR và nhánh phụ chỉ cần test xanh.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.names.outputs.tag }}
     permissions:
       contents: read
       packages: write
@@ -138,39 +138,16 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  deploy:
-    name: Deploy len swarm
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Runner self-hosted nằm TRONG VM manager: GitHub-hosted runner không nhìn
-    # thấy IP host-only 192.168.56.x, còn runner này vừa kéo được image vừa gọi
-    # được docker tại chỗ.
-    runs-on: [self-hosted, swarm-manager]
-    # permissions: {} — job này chỉ chạy /opt/capstone/deploy.sh trên runner self-hosted
-    # (không checkout, không gọi API GitHub), nên không cần GITHUB_TOKEN. Khai rỗng để
-    # token không được tiêm vào job: runner này là máy ảo dùng chung với cụm swarm.
-    permissions: {}
-    # timeout-minutes chỉ đếm khi job ĐÃ BẮT ĐẦU chạy (chặn ca deploy.sh treo).
-    # Runner offline thì job nằm ở trạng thái queued và KHÔNG bị huỷ bởi dòng này —
-    # GitHub chỉ tự huỷ job queued sau ~24h. Xem mục xử lý sự cố trong infra/README.md.
-    timeout-minutes: 15
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
-    steps:
-      - name: Deploy tag vừa build
-        run: /opt/capstone/deploy.sh "${{ needs.build.outputs.tag }}"
 
-  deploy-manual:
-    name: Deploy thu cong (rollback)
-    if: github.event_name == 'workflow_dispatch' && inputs.image_tag != ''
-    runs-on: [self-hosted, swarm-manager]
-    # Như job deploy ở trên: chỉ chạy deploy.sh tại chỗ, không cần token nào.
-    permissions: {}
-    timeout-minutes: 15
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
-    steps:
-      - name: Deploy tag duoc chon
-        run: /opt/capstone/deploy.sh "${{ inputs.image_tag }}"
+# ------------------------------------------------------------------ deploy
+# Deploy và rollback nằm ở workflow riêng: .github/workflows/deploy.yml (chạy bằng
+# workflow_run sau khi workflow này xanh trên main). Vì sao tách: job deploy chạy trên
+# runner self-hosted trong VM manager — VM tắt là runner offline và job nằm `queued`
+# tới ~24h. Khi deploy còn chung workflow, cả run CI/CD đứng theo nó; push kế tiếp huỷ
+# run cũ (concurrency ở trên) thành `cancelled` và badge CI/CD trên README báo
+# "failing" dù test + build đều xanh — đã gặp thật ngày 2026-11-26 (run 07:33 và 07:42
+# bị huỷ khi đang chờ runner, run 07:44 treo ở deploy). Tách ra thì badge này chỉ phản
+# ánh test + build; deploy chờ runner riêng, không kéo run CI/CD theo.
+#
+# deploy.yml tính lại tag từ head_sha theo ĐÚNG quy tắc 7 ký tự ở bước "Tinh ten image"
+# phía trên — đổi quy tắc đặt tag ở đây thì phải đổi cả bên đó.

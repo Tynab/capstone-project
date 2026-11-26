@@ -1,0 +1,85 @@
+name: Deploy
+
+# Deploy lên swarm qua runner self-hosted trong VM manager. Tách khỏi ci-cd.yml
+# (2026-11-26): VM tắt là runner offline, job deploy nằm `queued` tới ~24h; khi còn
+# chung workflow thì cả run CI/CD đứng theo, push sau huỷ run cũ thành `cancelled` và
+# badge CI/CD báo "failing" dù test + build xanh. Ở đây deploy chờ runner một mình:
+# VM bật lại (start.cmd) là runner nhận job — job đang giữ nhóm concurrency (bản cũ nhất)
+# chạy trước, rồi tới bản mới nhất đang pending; trạng thái cuối là bản mới nhất. Job chờ
+# quá ~24h thì GitHub kết thúc nó với kết quả failed: chỉ run Deploy đỏ, badge CI/CD không đổi.
+#
+# KHÔNG thêm trigger pull_request / pull_request_target: runner self-hosted là VM dùng
+# chung với cụm swarm (xem ghi chú đầu ci-cd.yml).
+
+on:
+  # Chạy sau mỗi lần workflow "CI/CD" kết thúc trên main. Tên phải khớp đúng `name:`
+  # của ci-cd.yml — đổi tên bên đó mà quên bên này thì deploy im lặng không bao giờ chạy.
+  # workflow_run luôn dùng file workflow ở nhánh mặc định, không phải ở commit vừa push.
+  workflow_run:
+    workflows: ["CI/CD"]
+    types: [completed]
+    branches: [main]
+  # Rollback / deploy tay một tag cũ: Actions → Deploy → Run workflow, hoặc
+  #   gh workflow run deploy.yml -f image_tag=<tag>
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag image cần deploy (vd: f692a61) — dùng để rollback."
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy len swarm
+    # Chỉ deploy khi CI/CD XANH và do PUSH lên main của chính repo này. Run CI/CD chạy tay
+    # (workflow_dispatch = chỉ test, không build image) hay run bị huỷ đều bị bỏ qua.
+    # Kiểm head_repository để run từ fork (nếu sau này có ai bật pull_request cho CI/CD,
+    # nhánh fork tên "main" cũng khớp bộ lọc branches) không bao giờ chạm tới runner.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    # Runner self-hosted nằm TRONG VM manager: GitHub-hosted runner không nhìn thấy IP
+    # host-only 192.168.56.x, còn runner này vừa kéo được image vừa gọi được docker tại chỗ.
+    runs-on: [self-hosted, swarm-manager]
+    # permissions: {} — job chỉ chạy /opt/capstone/deploy.sh tại chỗ (không checkout, không
+    # gọi API GitHub), nên không cần GITHUB_TOKEN. Khai rỗng để token không được tiêm vào
+    # job: runner này là máy ảo dùng chung với cụm swarm.
+    permissions: {}
+    # timeout-minutes chỉ đếm khi job ĐÃ BẮT ĐẦU chạy (chặn ca deploy.sh treo). Runner
+    # offline thì job nằm `queued` và GitHub kết thúc nó (failed) sau ~24h — giờ chỉ run
+    # Deploy chờ/đỏ, run CI/CD và badge của nó không bị ảnh hưởng.
+    timeout-minutes: 15
+    # Concurrency ở CẤP JOB (không phải cấp workflow) là cố ý: nếu đặt ở cấp workflow, mọi
+    # run Deploy — kể cả run sẽ bị `if` bỏ qua (vd sinh ra từ một run CI/CD chạy tay) — vào
+    # nhóm và có thể huỷ mất bản deploy thật đang chờ runner. Ở cấp job, GIẢ ĐỊNH là job bị
+    # `if` bỏ qua không vào nhóm (tài liệu GitHub không nói rõ; chưa kiểm bằng run thật). Trong nhóm: một job chạy/chờ runner,
+    # thêm một job pending; job pending mới hơn thay job pending cũ — VM bật lại thì bản
+    # mới nhất vẫn được deploy sau cùng.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy tag
+        shell: bash
+        # Giá trị đi qua env chứ không nhúng ${{ }} thẳng vào script: input tay là chuỗi
+        # tuỳ ý, nhúng thẳng thì chuỗi đó được bash thực thi trên VM manager.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          else
+            # Cùng quy tắc với bước "Tinh ten image" của ci-cd.yml: 7 ký tự đầu của SHA.
+            TAG="${HEAD_SHA:0:7}"
+          fi
+          # Ký tự hợp lệ của tag Docker; chặn chuỗi lạ trước khi tới deploy.sh.
+          if ! [[ "$TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::Tag không hợp lệ: '$TAG'"
+            exit 1
+          fi
+          echo "Deploy tag: $TAG"
+          /opt/capstone/deploy.sh "$TAG"

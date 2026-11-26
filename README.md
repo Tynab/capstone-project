@@ -23,15 +23,15 @@ Windows 11 (máy dev)                        GitHub
             │ tạo & cấu hình                           │
             ▼                                          │
    Docker Swarm (host-only 192.168.56.0/24)            │
-   ┌────────────────────────────────┐  ┌───────────────┴───────────────┐
-   │ swarm-manager · 192.168.56.10  │  │ swarm-worker · 192.168.56.11  │
-   │  frontend(nginx) · backend     │  │  mongo + volume               │
-   │  prometheus · grafana · mailpit│  │  backend · frontend           │
-   │  portainer(:9000) · cloudflared│  │  portainer-agent              │
-   │  mongodb/blackbox exporter     │  │  node-exporter · cAdvisor     │
-   │  node-exporter · cAdvisor      │  │                               │
-   │  GitHub self-hosted runner     │  │                               │
-   └────────────────────────────────┘  └───────────────────────────────┘
+┌────────────────────────────────┐     ┌───────────────┴───────────────┐
+│ swarm-manager · 192.168.56.10  │     │ swarm-worker · 192.168.56.11  │
+│  frontend(nginx) · backend     │     │  mongo + volume               │
+│  prometheus · grafana · mailpit│     │  backend · frontend           │
+│  portainer(:9000) · cloudflared│     │  portainer-agent              │
+│  mongodb/blackbox exporter     │     │  node-exporter · cAdvisor     │
+│  node-exporter · cAdvisor      │     │                               │
+│  GitHub self-hosted runner     │     │                               │
+└────────────────────────────────┘     └───────────────────────────────┘
 ```
 
 Truy cập từ máy dev: **80** app · **9000** Portainer · **9090** Prometheus · **3001** Grafana ·
@@ -103,16 +103,24 @@ npm run test:browser                # 14 khẳng định qua Chrome thật
 
 ## CICD
 
-Mỗi lần push lên `main`, [ci-cd.yml](.github/workflows/ci-cd.yml) chạy ba job:
+Mỗi lần push lên `main` chạy hai workflow nối nhau:
 
-| Job | Chạy trên | Việc |
+| Workflow · job | Chạy trên | Việc |
 |---|---|---|
-| `test` | runner GitHub | unit test backend, e2e tầng API, e2e qua trình duyệt thật |
-| `build` | runner GitHub | build 2 image, đẩy lên GHCR với tag `<sha 7 ký tự>` + `latest` |
-| `deploy` | **runner self-hosted trong VM manager** | `docker stack deploy` đúng tag vừa build, chờ hội tụ rồi kiểm `/api/health` và đối chiếu ảnh đang chạy |
+| [CI/CD](.github/workflows/ci-cd.yml) · `test` | runner GitHub | unit test backend + frontend, lint frontend, e2e tầng API, e2e qua trình duyệt thật |
+| [CI/CD](.github/workflows/ci-cd.yml) · `build` | runner GitHub | build 2 image, đẩy lên GHCR với tag `<sha 7 ký tự>` + `latest` |
+| [Deploy](.github/workflows/deploy.yml) · `deploy` | **runner self-hosted trong VM manager** | chạy khi CI/CD xanh trên `main` (`workflow_run`): `docker stack deploy` đúng tag vừa build, chờ hội tụ rồi kiểm `/api/health` và đối chiếu ảnh đang chạy |
 
-**Rollback**: chạy workflow bằng tay với input `image_tag` là tag cũ — swarm kéo lại đúng bản đó.
-Nếu runner offline (VM tắt), job `deploy` sẽ nằm ở trạng thái `queued` cho tới khi VM bật lại.
+Badge CI/CD ở đầu trang chỉ phản ánh test + build. Deploy tách thành workflow riêng vì runner nằm
+trong VM: VM tắt thì job deploy nằm `queued`, và khi còn chung một workflow nó kéo cả run CI/CD
+treo theo rồi bị push sau huỷ thành `cancelled` → badge báo "failing" dù mã xanh (lý do chi tiết ở
+cuối [ci-cd.yml](.github/workflows/ci-cd.yml)).
+
+**Rollback**: chạy tay workflow Deploy với input `image_tag` là tag cũ
+(`gh workflow run deploy.yml -f image_tag=<tag>`) — swarm kéo lại đúng bản đó.
+Nếu runner offline (VM tắt), run Deploy nằm `queued`; chờ quá ~24h thì GitHub kết thúc job đó với kết
+quả failed (chỉ run Deploy đỏ, badge CI/CD không đổi). Bật lại VM thì runner chạy job đang giữ hàng
+(bản cũ nhất) trước rồi tới bản mới nhất đang chờ — cuối cùng swarm chạy bản mới nhất.
 
 ## Giám sát
 
