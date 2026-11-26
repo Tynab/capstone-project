@@ -1,0 +1,58 @@
+# =============================================================================
+# .gitignore — dự án todo (backend Express · frontend React · e2e · infra)
+# Nguyên tắc: không bao giờ commit secret, thư mục phụ thuộc, hay sản phẩm build.
+# =============================================================================
+
+# ---------------------------------------------------------------- phụ thuộc
+node_modules/
+.pnp
+.pnp.js
+
+# ------------------------------------------------------ biến môi trường THẬT
+# Chỉ commit các file .env.example. backend/.env chứa JWT_SECRET thật nên tuyệt
+# đối không được lọt vào lịch sử git — kể cả sau khi đã xoá file.
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# ------------------------------------------------------------- sản phẩm build
+frontend/dist/
+dist/
+coverage/
+
+# ---------------------------------------------------------------------- log
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --------------------------------------------------- hạ tầng lab (infra/)
+# Khoá SSH do infra/setup.ps1 sinh ra, không bao giờ commit.
+infra/.ssh/
+# File .env của hạ tầng: chỉ chứa token Cloudflare Tunnel (mẫu ở infra/.env.example).
+# Rule `.env` ở trên đã chặn sẵn, dòng này để người đọc thấy ngay ý định.
+infra/.env
+# Trạng thái máy ảo và file tạm của Vagrant/Ansible.
+.vagrant/
+*.retry
+# Thư mục làm việc tạm của các phiên agent.
+.superpowers/
+
+# ------------------------------------------------------- hệ điều hành
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------ editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Thư mục làm việc tạm của archify (diagram xuất ra docs/diagrams/).
+.archify/
+
+presentation/

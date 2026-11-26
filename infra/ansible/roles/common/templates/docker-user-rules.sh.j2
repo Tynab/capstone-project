@@ -1,0 +1,47 @@
+#!/bin/sh
+# Chặn theo NGUỒN cho các cổng đã publish của lab.
+#
+# VÌ SAO CẦN FILE NÀY: quy tắc UFW "chỉ cho 192.168.56.0/24" KHÔNG chặn được cổng
+# publish. Với port mapping kiểu ingress, Docker DNAT gói tin ở bảng nat rồi cho đi qua
+# chuỗi FORWARD, nơi Docker chèn jump tới DOCKER-USER/DOCKER TRƯỚC chuỗi ufw-* — gói
+# tin không bao giờ đi qua INPUT nên UFW không thấy. Đã đo thật trên máy:
+#   iptables -S FORWARD        -> "-A FORWARD -j DOCKER-USER" đứng trước "-j ufw-before-forward"
+#   iptables -t nat -S DOCKER  -> DNAT tới container KHÔNG kèm điều kiện nguồn
+# Chuỗi DOCKER-USER là chỗ Docker dành riêng cho người quản trị, và nó được xét TRƯỚC
+# các luật ACCEPT của Docker, nên đây là chỗ đúng để đặt giới hạn.
+#
+# Cách khác đã thử và KHÔNG dùng được: khai `host_ip` trong long syntax của ports để
+# bind thẳng vào IP host-only — `docker stack deploy` từ chối (schema v3:
+# "additional property host_ip is not allowed").
+#
+# Idempotent: mỗi luật được kiểm bằng `iptables -C` trước khi thêm, nên chạy lại
+# (mỗi lần provision, mỗi lần reboot) không sinh luật trùng.
+set -eu
+
+PORTS="{{ lab_publish_ports | join(',') }}"
+NOI_BO="{{ lab_internal_cidrs | join(' ') }}"
+
+them_luat() {
+    # Thêm nếu chưa có. `iptables -C` trả 1 khi luật chưa tồn tại.
+    iptables -C "$@" 2>/dev/null || iptables -A "$@"
+}
+
+# 1) Traffic hồi đáp của kết nối đã thiết lập phải đi qua được, nếu không mọi kết nối
+#    đang mở sẽ đứt ngay khi luật DROP được nạp.
+them_luat DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+
+# 2) Cho phép nguồn nội bộ của lab: chính 2 VM (host-only), container trong overlay của
+#    swarm (10.0.0.0/8) và mạng docker_gwbridge (172.16.0.0/12). Prometheus scrape
+#    node-exporter/cAdvisor qua địa chỉ host-only nên gói tin của nó đi từ các dải này —
+#    thiếu dòng này là mất luôn 4 target giám sát.
+for nguon in $NOI_BO; do
+    them_luat DOCKER-USER -s "$nguon" -j RETURN
+done
+
+# 3) Còn lại: chặn các cổng publish của lab. Đây là điểm mấu chốt — cổng quản trị
+#    (Portainer/Grafana/Prometheus/Mailpit) và cổng app chỉ mở cho mạng host-only.
+them_luat DOCKER-USER -p tcp -m multiport --dports "$PORTS" -j DROP
+
+# 4) Mọi traffic khác trả lại cho Docker xử lý như mặc định (không đụng tới các cổng
+#    publish khác nếu sau này có thêm).
+them_luat DOCKER-USER -j RETURN

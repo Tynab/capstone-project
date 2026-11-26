@@ -1,0 +1,14 @@
+---
+# Gỡ gói có hook initramfs (mdadm, btrfs-progs) chưa chắc dựng lại initrd của MỌI kernel đang
+# cài; dựng lại tường minh để lần boot sau không còn nạp raid456/btrfs -> raid6_pq.
+- name: cập nhật initramfs
+  command: update-initramfs -u -k all
+
+# Nạp lại luật DOCKER-USER khi script đổi. `restart` (không phải `start`) để lần sửa
+# luật sau này thực sự được áp; chạy lại provision mà script KHÔNG đổi thì handler
+# không được gọi nên vẫn giữ được changed=0 ở lần chạy thứ hai.
+- name: nạp lại luật docker-user
+  systemd:
+    name: capstone-docker-user-rules.service
+    state: restarted
+    daemon_reload: yes

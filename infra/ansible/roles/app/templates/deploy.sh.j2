@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Deploy stack lên swarm. Dùng CHUNG cho Ansible (lần đầu) và cho CI (các lần sau)
+# nên hành vi deploy giống hệt nhau ở mọi đường vào.
+#
+#   ./deploy.sh            -> deploy bản latest
+#   ./deploy.sh sha-abc1234 -> deploy đúng tag đó (cũng là cách rollback)
+set -euo pipefail
+cd {{ app_dir }}
+
+# Nạp env tường minh: không dựa vào việc `docker stack deploy` có tự đọc .env hay
+# không (hành vi này khác nhau giữa các bản Docker).
+set -a
+. {{ app_dir }}/.env
+set +a
+
+TAG="${1:-}"
+if [ -n "$TAG" ]; then
+  export BACKEND_IMAGE="${BACKEND_REPO}:${TAG}"
+  export FRONTEND_IMAGE="${FRONTEND_REPO}:${TAG}"
+fi
+
+# Tên config = hash nội dung (xem ghi chú ở cuối docker-stack.yml): config là bất biến nên nội
+# dung mới phải mang tên mới, nếu không `stack deploy` dừng với "only updates to Labels are allowed".
+cfg_hash() { sha256sum "$1" | cut -c1-12; }
+export CFG_PROMETHEUS_YML=$(cfg_hash prometheus.yml)
+export CFG_BLACKBOX_YML=$(cfg_hash blackbox.yml)
+export CFG_GRAFANA_DATASOURCE=$(cfg_hash grafana/provisioning/datasources/prometheus.yml)
+export CFG_GRAFANA_DASHBOARDS_PROVIDER=$(cfg_hash grafana/provisioning/dashboards/dashboards.yml)
+export CFG_GRAFANA_DASHBOARD_CAPSTONE=$(cfg_hash grafana/dashboards/capstone-overview.json)
+
+echo "Deploy {{ stack_name }}: backend=${BACKEND_IMAGE} frontend=${FRONTEND_IMAGE}"
+# --prune: xoá service không còn trong file stack. Bắt buộc phải có vì tunnel là TUỲ CHỌN:
+# bỏ token trong infra/.env là khối if trong template biến mất, nhưng `docker stack deploy`
+# mặc định KHÔNG xoá service đã bị bỏ khỏi file — không có cờ này thì service connector cũ
+# vẫn chạy và phải gõ tay `docker service rm`, trái nguyên tắc "mọi thứ bằng IaC/script".
+docker stack deploy --prune -c {{ app_dir }}/docker-stack.yml {{ stack_name }}
+
+# Chờ các service hội tụ (tối đa 180s) trước khi kết luận.
+# Phải thấy ĐỦ REPLICA HAI LẦN LIÊN TIẾP mới kết luận. Lý do: ngay sau `stack deploy`,
+# service vừa được update vẫn còn task CŨ đang chạy, nên mẫu đầu tiên có thể thấy "1/1"
+# trong khi task mới sắp chết — đã gặp thật: token sai định dạng -> task exit 255, service
+# về 0/1, nhưng deploy.sh vẫn exit 0 vì mẫu đầu rơi đúng lúc task cũ còn sống.
+converged=0
+lan_truoc_du=0
+for i in $(seq 1 36); do
+  replicas=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
+  # awk exit 0 = mọi dòng đều "chạy >= mong đợi"; exit 1 = còn service THIẾU replica.
+  # Cố ý so `>=` chứ không `==`: khi rolling update, swarm (order: start-first) tạm
+  # chạy DƯ một task nên replicas là "3/2" — đó là trạng thái lành, đòi bằng đúng thì
+  # deploy đúng vẫn bị kết luận đỏ (đã gặp thật ngày 2026-10-16).
+  if [ -n "$replicas" ] && echo "$replicas" | awk '{split($2, a, "/"); if (a[1]+0 < a[2]+0) exit 1}'; then
+    if [ "$lan_truoc_du" = "1" ]; then
+      echo "Tất cả service đã đủ replica và ổn định qua 2 lần kiểm tra (lần ${i})."
+      converged=1
+      break
+    fi
+    lan_truoc_du=1
+  else
+    lan_truoc_du=0
+  fi
+  sleep 5
+done
+docker stack services {{ stack_name }}
+
+# Xác nhận qua chính nginx: một request đi hết nginx -> backend -> DB.
+health_ok=0
+for i in $(seq 1 20); do
+  if curl -fsS http://127.0.0.1/api/health >/dev/null; then
+    echo "Healthcheck qua nginx: OK"
+    health_ok=1
+    break
+  fi
+  sleep 5
+done
+
+# BẮT BUỘC: healthcheck ở trên có thể xanh vì BẢN CŨ vẫn đang phục vụ sau khi
+# swarm rollback (update_config failure_action: rollback). Không kiểm ảnh đang
+# chạy thì deploy tag sai vẫn báo thành công — đã gặp thật.
+# Dùng `stack services --format` chứ không `service inspect` nhiều tên: inspect
+# với nhiều service trả về MẢNG nên template .Name không tồn tại (đã gặp thật).
+# (Chú thích không được chứa cặp ngoặc nhọn — Jinja sẽ hiểu là biểu thức.)
+running=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Image{{ "}}" }}')
+echo "$running"
+# CỐ Ý dùng `case` khớp chuỗi, KHÔNG dùng `echo ... | grep -qF`: grep -q thoát ngay
+# khi khớp nên đầu đọc của pipe đóng lại, `echo` đang ghi nhận EPIPE ("write error:
+# Broken pipe") và với `set -o pipefail` thì pipeline bị coi là lỗi DÙ ĐÃ KHỚP —
+# deploy đúng vẫn kết luận đỏ. Đã gặp thật ngày 2026-10-16: deploy lên :b96abc1
+# thành công (2/2 replica đúng ảnh) mà job vẫn fail vì đúng cái pipe này.
+thieu=""
+case "$running" in *"${BACKEND_IMAGE}"*) ;; *) thieu="backend" ;; esac
+case "$running" in *"${FRONTEND_IMAGE}"*) ;; *) thieu="${thieu} frontend" ;; esac
+if [ -n "$thieu" ]; then
+  echo "LỖI: service KHÔNG chạy đúng ảnh được yêu cầu (thiếu:${thieu})."
+  echo "Mong đợi: ${BACKEND_IMAGE} / ${FRONTEND_IMAGE}"
+  echo "Thường là image không tồn tại nên swarm đã rollback về bản cũ."
+  exit 1
+fi
+
+# Kiểm tra lần cuối ngay trước khi kết luận: sau healthcheck, mọi service phải VẪN đủ
+# replica. Bịt nốt khe thời gian giữa vòng hội tụ và lúc kết luận (task mới có thể chết
+# sau khi vòng hội tụ đã xanh). Điều kiện là "KHÔNG THIẾU" (chạy >= mong đợi), không
+# phải "bằng đúng" — xem lý do ở vòng hội tụ phía trên (3/2 khi rolling update).
+final=$(docker stack services {{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }} {{ "{{" }}.Replicas{{ "}}" }}' || true)
+if [ -z "$final" ] || ! echo "$final" | awk '{split($2, a, "/"); if (a[1]+0 < a[2]+0) exit 1}'; then
+  echo "LỖI: sau healthcheck vẫn còn service chưa đủ replica."
+  converged=0
+fi
+
+if [ "$health_ok" != "1" ] || [ "$converged" != "1" ]; then
+  echo "LỖI: chưa hội tụ (converged=${converged}) hoặc healthcheck đỏ (health_ok=${health_ok})."
+  echo "--- task lỗi (nếu có) ---"
+  for svc in $(docker stack services {{ stack_name }} -q); do
+    docker service ps --no-trunc "$svc" --filter desired-state=shutdown || true
+  done
+  exit 1
+fi
+
+# Dọn config cũ của stack mà không service nào còn dùng (bản trước khi nội dung đổi). Chạy SAU
+# khi đã xanh: `docker config rm` từ chối config đang được dùng, nên vòng này không bao giờ gỡ
+# nhầm config sống — chỉ ghi nhận và bỏ qua.
+for cfg in $(docker config ls --filter label=com.docker.stack.namespace={{ stack_name }} --format '{{ "{{" }}.Name{{ "}}" }}'); do
+  if docker config rm "$cfg" >/dev/null 2>&1; then echo "Đã dọn config không còn dùng: $cfg"; fi
+done
+
+exit 0

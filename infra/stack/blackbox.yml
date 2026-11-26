@@ -1,0 +1,7 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      # Trong lab mọi thứ đi qua IPv4 host-only; ép ip4 để tránh probe treo vì IPv6.
+      preferred_ip_protocol: ip4

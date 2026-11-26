@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "Mô hình dữ liệu MongoDB — capstone-project",
+    "output": ".archify/erd-mo-hinh-du-lieu-20261125-032500/mo-hinh-du-lieu.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "54249fbc708d74a0e6f84eecb03cbeaa8fc7f091"
+    },
+    "legend": {
+      "entries": {
+        "pk": {
+          "label": "Khoá chính (_id)"
+        },
+        "fk": {
+          "label": "Khoá ngoại (ref)"
+        },
+        "uk": {
+          "label": "Duy nhất (unique)"
+        },
+        "one": {
+          "label": "Một"
+        },
+        "many": {
+          "label": "Nhiều"
+        },
+        "optional": {
+          "label": "Có thể không có"
+        }
+      }
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "gapX": 150,
+    "gapY": 40
+  },
+  "entities": [
+    {
+      "id": "users",
+      "label": "users",
+      "sublabel": "model \"User\"",
+      "tag": "Tài khoản",
+      "row": 0,
+      "col": 0,
+      "width": 320,
+      "attributes": [
+        {
+          "name": "_id",
+          "type": "ObjectId",
+          "key": "pk"
+        },
+        {
+          "name": "name",
+          "type": "String · required"
+        },
+        {
+          "name": "email",
+          "type": "String · required · unique",
+          "key": "uk"
+        },
+        {
+          "name": "password",
+          "type": "String · required (hash bcrypt)"
+        },
+        {
+          "name": "resetToken",
+          "type": "String · index (SHA-256)"
+        },
+        {
+          "name": "resetTokenExpiry",
+          "type": "Date"
+        },
+        {
+          "name": "tokenVersion",
+          "type": "Number · default 0"
+        }
+      ],
+      "sources": [
+        {
+          "path": "backend/models/userModel.js",
+          "line": 3,
+          "end_line": 17,
+          "label": "Schema users"
+        },
+        {
+          "path": "backend/controllers/forgotPasswordController.js",
+          "line": 19,
+          "end_line": 42,
+          "label": "Lưu SHA-256 + hạn 15 phút"
+        },
+        {
+          "path": "backend/controllers/forgotPasswordController.js",
+          "line": 111,
+          "end_line": 126,
+          "label": "Reset: xoá token, tăng tokenVersion"
+        }
+      ]
+    },
+    {
+      "id": "tasks",
+      "label": "tasks",
+      "sublabel": "model \"Task\" · timestamps",
+      "tag": "Công việc",
+      "row": 0,
+      "col": 1,
+      "width": 350,
+      "attributes": [
+        {
+          "name": "_id",
+          "type": "ObjectId",
+          "key": "pk"
+        },
+        {
+          "name": "title",
+          "type": "String · required"
+        },
+        {
+          "name": "description",
+          "type": "String · required"
+        },
+        {
+          "name": "userId",
+          "type": "ObjectId · ref User · required · index",
+          "key": "fk",
+          "references": "users._id"
+        },
+        {
+          "name": "completed",
+          "type": "Boolean · required"
+        },
+        {
+          "name": "createdAt",
+          "type": "Date (timestamps)"
+        },
+        {
+          "name": "updatedAt",
+          "type": "Date (timestamps)"
+        }
+      ],
+      "sources": [
+        {
+          "path": "backend/models/taskModel.js",
+          "line": 3,
+          "end_line": 21,
+          "label": "Schema tasks"
+        },
+        {
+          "path": "backend/scripts/migrate-task-userid-to-objectid.js",
+          "line": 20,
+          "end_line": 46,
+          "label": "Migration userId chuỗi → ObjectId"
+        },
+        {
+          "path": "backend/controllers/taskController.js",
+          "line": 95,
+          "end_line": 101,
+          "label": "Lọc theo _id + userId"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "tasks_users",
+      "from": "tasks",
+      "to": "users",
+      "label": "userId → _id",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "toCardinality": "one"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Bảo mật trong users",
+      "items": [
+        "password chỉ lưu hash bcrypt cost 10 (utils/password.js); API không bao giờ trả password, resetToken hay tokenVersion",
+        "resetToken chỉ lưu SHA-256 của token thô 20 byte, kèm resetTokenExpiry = lúc tạo + 15 phút; reset thành công đặt cả hai về null",
+        "tokenVersion tăng 1 mỗi lần reset mật khẩu; requireAuth so với tokenVersion trong JWT nên mọi JWT cũ bị 401"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "tasks.userId kiểu ObjectId",
+      "items": [
+        "ref \"User\", required, có index vì mọi truy vấn task đều lọc theo userId",
+        "Dữ liệu cũ lưu userId dạng chuỗi: chạy npm run migrate:userid trước khi khởi động server, nếu không task cũ biến mất khỏi UI",
+        "Script idempotent: chỉ chuyển document có userId kiểu string, bỏ qua giá trị không phải ObjectId hợp lệ"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Index và ràng buộc",
+      "items": [
+        "email unique: hai đăng ký song song cùng email lỗi E11000 ở save(), backend map về 400 \"User already exists\"",
+        "Sửa/xoá task lọc theo cả _id lẫn userId nên không đụng được task của người khác",
+        "Chỉ tasks bật timestamps (createdAt/updatedAt); users không có"
+      ]
+    }
+  ]
+}

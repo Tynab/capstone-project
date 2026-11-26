@@ -1,0 +1,360 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Quy trình giao hàng mã nguồn — CICD + IaC (capstone-project)",
+    "output": ".archify/workflow-quy-trinh-giao-hang-20261125-032500/quy-trinh-giao-hang.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "54249fbc708d74a0e6f84eecb03cbeaa8fc7f091"
+    },
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Chạy trong cụm / VM"
+        },
+        "cloud": {
+          "label": "Hệ thống ngoài (GitHub)"
+        },
+        "security": {
+          "label": "Cổng chặn & khôi phục"
+        },
+        "external": {
+          "label": "Máy dev"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "iac",
+      "label": "Dựng cụm bằng IaC (một lần)"
+    },
+    {
+      "id": "dev",
+      "label": "Máy dev (Windows)"
+    },
+    {
+      "id": "github",
+      "label": "GitHub: Actions + GHCR"
+    },
+    {
+      "id": "manager",
+      "label": "VM manager: runner + deploy"
+    },
+    {
+      "id": "runtime",
+      "label": "Cụm Docker Swarm"
+    }
+  ],
+  "mainPath": [
+    "commit",
+    "test",
+    "build",
+    "deployjob",
+    "deploysh",
+    "live"
+  ],
+  "nodes": [
+    {
+      "id": "setup",
+      "lane": "iac",
+      "col": 0,
+      "type": "external",
+      "label": "setup.cmd",
+      "sublabel": "kiểm công cụ, firewall, khoá lab",
+      "sources": [
+        {
+          "path": "infra/setup.ps1",
+          "line": 50,
+          "end_line": 129
+        }
+      ]
+    },
+    {
+      "id": "vagrant",
+      "lane": "iac",
+      "col": 1,
+      "type": "external",
+      "label": "vagrant up",
+      "sublabel": "2 VM + mạng host-only",
+      "sources": [
+        {
+          "path": "infra/Vagrantfile",
+          "line": 46,
+          "end_line": 63
+        },
+        {
+          "path": "infra/Vagrantfile",
+          "line": 83,
+          "end_line": 90
+        }
+      ]
+    },
+    {
+      "id": "ansible",
+      "lane": "iac",
+      "col": 2,
+      "type": "backend",
+      "label": "Ansible — 5 role",
+      "sublabel": "common → swarm → app → runner",
+      "sources": [
+        {
+          "path": "infra/ansible/site.yml",
+          "line": 1,
+          "end_line": 33
+        },
+        {
+          "path": "infra/ansible/roles/app/handlers/main.yml",
+          "line": 1,
+          "end_line": 7
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/env.j2",
+          "line": 32,
+          "end_line": 36
+        }
+      ]
+    },
+    {
+      "id": "commit",
+      "lane": "dev",
+      "col": 0,
+      "type": "external",
+      "label": "git push main",
+      "sublabel": "tag = 7 ký tự đầu của sha",
+      "sources": [
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 3,
+          "end_line": 17
+        },
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 106,
+          "end_line": 114
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "lane": "github",
+      "col": 1,
+      "type": "cloud",
+      "label": "Job test",
+      "sublabel": "unit + lint + e2e API + Chrome",
+      "sources": [
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 24,
+          "end_line": 81
+        }
+      ]
+    },
+    {
+      "id": "build",
+      "lane": "github",
+      "col": 2,
+      "type": "cloud",
+      "label": "Job build → GHCR",
+      "sublabel": "tag sha 7 ký tự + latest",
+      "sources": [
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 83,
+          "end_line": 139
+        }
+      ]
+    },
+    {
+      "id": "deployjob",
+      "lane": "manager",
+      "col": 3,
+      "type": "backend",
+      "label": "Job deploy",
+      "sublabel": "runner tự host trong VM",
+      "sources": [
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 141,
+          "end_line": 162
+        },
+        {
+          "path": "infra/ansible/roles/runner/tasks/main.yml",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "deploysh",
+      "lane": "manager",
+      "col": 4,
+      "type": "backend",
+      "label": "deploy.sh",
+      "sublabel": "--prune, hội tụ, health, kiểm ảnh",
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/deploy.sh.j2",
+          "line": 23,
+          "end_line": 65
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/deploy.sh.j2",
+          "line": 67,
+          "end_line": 88
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/deploy.sh.j2",
+          "line": 90,
+          "end_line": 107
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "lane": "runtime",
+      "col": 5,
+      "type": "backend",
+      "label": "12–13 service chạy",
+      "sublabel": "cloudflared chỉ khi có token tunnel",
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 28,
+          "end_line": 314
+        },
+        {
+          "path": "infra/ansible/roles/app/tasks/main.yml",
+          "line": 49,
+          "end_line": 52
+        }
+      ]
+    },
+    {
+      "id": "rollback",
+      "lane": "manager",
+      "col": 5,
+      "type": "security",
+      "label": "Rollback",
+      "sublabel": "chỉ backend, frontend về bản cũ",
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 64,
+          "end_line": 98
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/deploy.sh.j2",
+          "line": 67,
+          "end_line": 88
+        },
+        {
+          "path": ".github/workflows/ci-cd.yml",
+          "line": 164,
+          "end_line": 176
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "setup-vagrant",
+      "from": "setup",
+      "to": "vagrant"
+    },
+    {
+      "id": "vagrant-ansible",
+      "from": "vagrant",
+      "to": "ansible"
+    },
+    {
+      "id": "ansible-live",
+      "from": "ansible",
+      "to": "live",
+      "label": "handler: deploy.sh không tag → :latest",
+      "role": "branch"
+    },
+    {
+      "id": "commit-test",
+      "from": "commit",
+      "to": "test"
+    },
+    {
+      "id": "test-build",
+      "from": "test",
+      "to": "build"
+    },
+    {
+      "id": "build-deploy",
+      "from": "build",
+      "to": "deployjob",
+      "label": "image",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deploy-sh",
+      "from": "deployjob",
+      "to": "deploysh"
+    },
+    {
+      "id": "sh-live",
+      "from": "deploysh",
+      "to": "live",
+      "label": "xác minh xanh",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sh-rollback",
+      "from": "deploysh",
+      "to": "rollback",
+      "label": "kiểm ảnh lệch → exit 1",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "rollback-live",
+      "from": "rollback",
+      "to": "live",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Hai đường vào, một script deploy",
+      "items": [
+        "CI gọi /opt/capstone/deploy.sh <tag sha>; handler Ansible gọi cùng script nhưng KHÔNG truyền tag → deploy :latest từ .env",
+        "Handler chạy mỗi lần provision làm .env, file stack hoặc cấu hình giám sát đổi → có thể thay bản sha CI đang chạy bằng :latest; muốn giữ thì deploy tay đúng tag",
+        "Rollback tay: chạy workflow_dispatch với image_tag cũ (job deploy-manual, không build); bỏ trống = chỉ chạy test"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cổng chặn trước khi báo xanh",
+      "items": [
+        "Đủ replica (chạy ≥ mong đợi) HAI mẫu liên tiếp → healthcheck qua nginx → kiểm ảnh đang chạy đúng tag → kiểm replica lần cuối",
+        "Sai một cổng là exit 1 — đã gặp thật: token tunnel sai định dạng → task exit 255, service về 0/1 mà deploy.sh bản cũ (kiểm một mẫu) vẫn exit 0"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Vì sao deploy hỏng vẫn an toàn",
+      "items": [
+        "Chỉ backend + frontend có update_config: order start-first + failure_action rollback + monitor 45s; swarm tự rollback trong lúc update, deploy.sh chỉ phát hiện sau đó bằng bước kiểm ảnh",
+        "Service khác (vd cloudflared) không có update_config: task chết thì nằm 0/1, không rollback — chỉ deploy.sh báo đỏ",
+        "monitor phải lớn hơn start-period 20s + interval 15s của healthcheck — mặc định 5s của swarm quá ngắn, đã từng làm swarm rollback nhầm bản tốt"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Runner phải online thì mới deploy",
+      "items": [
+        "Runner nằm trong VM manager: VM tắt → job deploy đứng queued; timeout-minutes 15 chỉ đếm khi job đã chạy",
+        "Bật lại VM bằng start.cmd (resume từng VM song song, chờ SSH); destroy.cmd dọn 3 mức, mức nào cũng gỡ đăng ký runner — chỉ vm/full tự sao lưu MongoDB, state xoá volume mà không sao lưu"
+      ]
+    }
+  ]
+}

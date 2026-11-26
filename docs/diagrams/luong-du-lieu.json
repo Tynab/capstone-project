@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Luồng dữ liệu — capstone-project: dữ liệu đi đâu và lưu ở đâu",
+    "output": ".archify/dataflow-luong-du-lieu-20261125-032500/luong-du-lieu.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "54249fbc708d74a0e6f84eecb03cbeaa8fc7f091"
+    },
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "Luồng thường"
+        },
+        "emphasis": {
+          "label": "Dữ liệu chính"
+        },
+        "security": {
+          "label": "Dữ liệu nhạy cảm"
+        },
+        "dashed": {
+          "label": "Định kỳ / bất đồng bộ"
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "label": "Nguồn"
+    },
+    {
+      "label": "Biên"
+    },
+    {
+      "label": "Xử lý"
+    },
+    {
+      "label": "Lưu trữ"
+    },
+    {
+      "label": "Tiêu thụ"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Người dùng",
+      "sublabel": "form đăng nhập, task mới",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "frontend/src/api/taskApi.js",
+          "line": 16,
+          "end_line": 19
+        },
+        {
+          "path": "frontend/src/api/authApi.js",
+          "line": 6,
+          "end_line": 14
+        }
+      ]
+    },
+    {
+      "id": "edge",
+      "type": "cloud",
+      "label": "Cloudflare edge",
+      "sublabel": "TLS + tunnel vào cụm",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "infra/ansible/group_vars/all.yml",
+          "line": 16,
+          "end_line": 20
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 296,
+          "end_line": 314
+        }
+      ]
+    },
+    {
+      "id": "metrics_src",
+      "type": "external",
+      "label": "VM + container + app",
+      "sublabel": "2 node, health /api/health",
+      "stage": 1,
+      "row": 4,
+      "sources": [
+        {
+          "path": "infra/stack/prometheus.yml",
+          "line": 7,
+          "end_line": 27
+        }
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "frontend",
+      "label": "nginx",
+      "sublabel": "CSP+HSTS, proxy /api",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "frontend/nginx.conf",
+          "line": 27,
+          "end_line": 28
+        },
+        {
+          "path": "frontend/nginx.conf",
+          "line": 35,
+          "end_line": 37
+        },
+        {
+          "path": "frontend/nginx.conf",
+          "line": 57,
+          "end_line": 68
+        }
+      ]
+    },
+    {
+      "id": "exporter",
+      "type": "backend",
+      "label": "Exporters ×4",
+      "sublabel": "node, cAdvisor, mongo, blackbox",
+      "stage": 2,
+      "row": 4,
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 179,
+          "end_line": 240
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "API Express",
+      "sublabel": "validate, bcrypt cost 10, JWT 3 ngày",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "backend/controllers/userController.js",
+          "line": 8,
+          "end_line": 12
+        },
+        {
+          "path": "backend/utils/password.js",
+          "line": 7,
+          "end_line": 9
+        },
+        {
+          "path": "backend/controllers/forgotPasswordController.js",
+          "line": 23,
+          "end_line": 63
+        }
+      ]
+    },
+    {
+      "id": "prom",
+      "type": "database",
+      "label": "Prometheus TSDB",
+      "sublabel": "giữ 15 ngày",
+      "stage": 3,
+      "row": 4,
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 122,
+          "end_line": 147
+        }
+      ]
+    },
+    {
+      "id": "mongo",
+      "type": "database",
+      "label": "MongoDB",
+      "sublabel": "users · tasks",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 29,
+          "end_line": 43
+        },
+        {
+          "path": "backend/models/userModel.js",
+          "line": 3,
+          "end_line": 14
+        },
+        {
+          "path": "backend/models/taskModel.js",
+          "line": 3,
+          "end_line": 18
+        }
+      ]
+    },
+    {
+      "id": "mailpit",
+      "type": "database",
+      "label": "Mailpit",
+      "sublabel": "SMTP lab — mail KHÔNG bền",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 102,
+          "end_line": 119
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/env.j2",
+          "line": 26,
+          "end_line": 29
+        },
+        {
+          "path": "backend/services/mailService.js",
+          "line": 33,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "grafana",
+      "type": "backend",
+      "label": "Grafana",
+      "sublabel": "dashboard cấp sẵn từ file",
+      "stage": 4,
+      "row": 4,
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 149,
+          "end_line": 177
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "user-edge",
+      "from": "user",
+      "to": "edge",
+      "label": "HTTPS",
+      "classification": "dữ liệu người dùng",
+      "variant": "emphasis"
+    },
+    {
+      "id": "edge-nginx",
+      "from": "edge",
+      "to": "nginx",
+      "label": "capstone",
+      "classification": "trang + /api",
+      "variant": "default"
+    },
+    {
+      "id": "edge-backend",
+      "from": "edge",
+      "to": "backend",
+      "label": "capstone-api",
+      "classification": "API trực tiếp",
+      "variant": "default"
+    },
+    {
+      "id": "nginx-backend",
+      "from": "nginx",
+      "to": "backend",
+      "label": "/api",
+      "classification": "proxy nội bộ, XFF = IP thật",
+      "variant": "emphasis"
+    },
+    {
+      "id": "backend-mongo",
+      "from": "backend",
+      "to": "mongo",
+      "label": "task + user",
+      "classification": "driver Mongo",
+      "variant": "emphasis"
+    },
+    {
+      "id": "backend-mail",
+      "from": "backend",
+      "to": "mailpit",
+      "label": "mail reset",
+      "classification": "token THÔ trong link, fire-and-forget",
+      "variant": "security"
+    },
+    {
+      "id": "src-exporter",
+      "from": "metrics_src",
+      "to": "exporter",
+      "label": "số liệu thô",
+      "classification": "/proc, /sys, Docker API",
+      "variant": "default"
+    },
+    {
+      "id": "exporter-prom",
+      "from": "exporter",
+      "to": "prom",
+      "label": "/metrics",
+      "classification": "scrape định kỳ",
+      "variant": "dashed"
+    },
+    {
+      "id": "prom-grafana",
+      "from": "prom",
+      "to": "grafana",
+      "label": "PromQL",
+      "classification": "đọc theo dashboard",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Đường dữ liệu chính",
+      "items": [
+        "Người dùng vào qua Cloudflare → nginx (trang + /api) hoặc thẳng API qua subdomain capstone-api → backend → MongoDB",
+        "Cổng publish 80/3001/8025/9000/9090/9100/8080 chỉ nhận nguồn nội bộ (luật DOCKER-USER); từ ngoài lab chỉ vào được app qua tunnel",
+        "Mọi phản hồi là JSON; trong lab SMTP_HOST=mailpit nên mail không rời cụm"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Dữ liệu nhạy cảm",
+      "items": [
+        "Mail reset chứa token THÔ trong link; DB chỉ lưu SHA-256 của nó kèm hạn 15 phút",
+        "Mật khẩu hash bcrypt cost 10; JWT ký bằng JWT_SECRET, sống 3 ngày, đổi mật khẩu là vô hiệu hết token cũ",
+        "JWT nằm trong localStorage → CSP chặt (chỉ 'self') của nginx là lưới chặn XSS thứ hai; kèm HSTS, nosniff, X-Frame-Options DENY",
+        "Mỗi task mới cũng gửi mail \"Task Added\" (tiêu đề + mô tả); trong lab mail vào Mailpit — service không khai volume nên hộp thư KHÔNG bền"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Dữ liệu bền nằm ở đâu",
+      "items": [
+        "capstone_mongo_data (ghim node worker) · prom_data (15 ngày) · grafana_data · portainer_state",
+        "destroy.cmd mức vm/full tự mongodump ra infra/backup-mongo-<ngày>.gz (kiểm gzip -t, lỗi là dừng); mức state không tự backup — chạy tay lệnh trong infra/README.md"
+      ]
+    }
+  ]
+}

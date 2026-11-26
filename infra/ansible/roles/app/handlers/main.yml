@@ -1,0 +1,7 @@
+---
+# Deploy chỉ chạy khi file stack/.env thực sự đổi — provision lại mà không đổi gì
+# thì không cần đụng vào swarm.
+- name: deploy stack
+  command: "{{ app_dir }}/deploy.sh"
+  become: true
+  become_user: vagrant

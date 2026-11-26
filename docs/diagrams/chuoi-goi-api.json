@@ -1,0 +1,489 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Chuỗi gọi API — toàn bộ 10 endpoint của capstone-project",
+    "output": ".archify/sequence-chuoi-goi-api-20261125-032500/chuoi-goi-api.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Tynab/capstone-project.git",
+      "revision": "54249fbc708d74a0e6f84eecb03cbeaa8fc7f091"
+    },
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "Gọi thường"
+        },
+        "emphasis": {
+          "label": "Gọi chính"
+        },
+        "security": {
+          "label": "Nhạy cảm"
+        },
+        "dashed": {
+          "label": "Bất đồng bộ"
+        },
+        "return": {
+          "label": "Phản hồi"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Trình duyệt",
+      "sublabel": "app React",
+      "sources": [
+        {
+          "path": "frontend/src/api/client.js",
+          "line": 12,
+          "end_line": 14
+        },
+        {
+          "path": "frontend/src/api/client.js",
+          "line": 46,
+          "end_line": 62
+        },
+        {
+          "path": "frontend/src/api/taskApi.js",
+          "line": 16,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "type": "cloud",
+      "label": "Cloudflare",
+      "sublabel": "edge + tunnel",
+      "sources": [
+        {
+          "path": "infra/ansible/group_vars/all.yml",
+          "line": 16,
+          "end_line": 20
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 296,
+          "end_line": 314
+        },
+        {
+          "path": "infra/README.md",
+          "line": 193,
+          "end_line": 196
+        }
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "frontend",
+      "label": "nginx",
+      "sublabel": "SPA + proxy",
+      "sources": [
+        {
+          "path": "frontend/nginx.conf",
+          "line": 16,
+          "end_line": 28
+        },
+        {
+          "path": "frontend/nginx.conf",
+          "line": 35,
+          "end_line": 37
+        },
+        {
+          "path": "frontend/nginx.conf",
+          "line": 57,
+          "end_line": 67
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "API Express",
+      "sublabel": "JWT · limit",
+      "sources": [
+        {
+          "path": "backend/middleware/requireAuth.js",
+          "line": 11,
+          "end_line": 19
+        },
+        {
+          "path": "backend/routes/userRoute.js",
+          "line": 8,
+          "end_line": 21
+        },
+        {
+          "path": "backend/routes/taskRoute.js",
+          "line": 10,
+          "end_line": 28
+        }
+      ]
+    },
+    {
+      "id": "mongo",
+      "type": "database",
+      "label": "MongoDB",
+      "sublabel": "users · tasks",
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 29,
+          "end_line": 43
+        },
+        {
+          "path": "backend/models/userModel.js",
+          "line": 16
+        },
+        {
+          "path": "backend/models/taskModel.js",
+          "line": 20
+        }
+      ]
+    },
+    {
+      "id": "mailpit",
+      "type": "database",
+      "label": "Mailpit",
+      "sublabel": "SMTP lab",
+      "sources": [
+        {
+          "path": "infra/ansible/roles/app/templates/docker-stack.yml.j2",
+          "line": 102,
+          "end_line": 119
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/env.j2",
+          "line": 26,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "probe",
+      "type": "external",
+      "label": "Healthcheck",
+      "sublabel": "Docker · blackbox · CI",
+      "sources": [
+        {
+          "path": "backend/Dockerfile",
+          "line": 24,
+          "end_line": 25
+        },
+        {
+          "path": "infra/stack/prometheus.yml",
+          "line": 20,
+          "end_line": 27
+        },
+        {
+          "path": "infra/ansible/roles/app/templates/deploy.sh.j2",
+          "line": 56,
+          "end_line": 59
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 370,
+      "label": "Vào hệ thống"
+    },
+    {
+      "from": 370,
+      "to": 690,
+      "label": "Đăng ký · phiên đăng nhập"
+    },
+    {
+      "from": 690,
+      "to": 1080,
+      "label": "Task (đều cần JWT)"
+    },
+    {
+      "from": 1080,
+      "to": 1380,
+      "label": "Quên · đặt lại mật khẩu"
+    },
+    {
+      "from": 1380,
+      "to": 1535,
+      "label": "Sức khoẻ"
+    }
+  ],
+  "messages": [
+    {
+      "id": "t1",
+      "from": "browser",
+      "to": "cloudflare",
+      "y": 160,
+      "label": "HTTPS",
+      "variant": "emphasis",
+      "note": "TLS do Cloudflare lo; IP thật đi kèm CF-Connecting-IP"
+    },
+    {
+      "id": "t2",
+      "from": "cloudflare",
+      "to": "nginx",
+      "y": 215,
+      "label": "tunnel · capstone",
+      "note": "capstone → frontend:80"
+    },
+    {
+      "id": "t2b",
+      "from": "cloudflare",
+      "to": "backend",
+      "y": 280,
+      "label": "tunnel · capstone-api",
+      "note": "capstone-api → backend:8000, bỏ qua nginx: chỉ còn helmet"
+    },
+    {
+      "id": "t3",
+      "from": "nginx",
+      "to": "backend",
+      "y": 345,
+      "label": "/api",
+      "note": "proxy_pass + real_ip — backend thấy IP thật của khách"
+    },
+    {
+      "id": "m1",
+      "from": "browser",
+      "to": "backend",
+      "y": 410,
+      "label": "POST /user/register",
+      "variant": "emphasis",
+      "note": "rate limit 20 lần/giờ theo IP, đếm riêng ở từng replica"
+    },
+    {
+      "id": "m2",
+      "from": "backend",
+      "to": "mongo",
+      "y": 454,
+      "label": "create user",
+      "note": "bcrypt cost 10; mật khẩu tối thiểu 8 ký tự"
+    },
+    {
+      "id": "m3",
+      "from": "browser",
+      "to": "backend",
+      "y": 510,
+      "label": "POST /user/login",
+      "variant": "emphasis",
+      "note": "rate limit 10 lần/15 phút (mỗi replica); sai mật khẩu hay sai email đều cùng thông báo"
+    },
+    {
+      "id": "m4",
+      "from": "backend",
+      "to": "mongo",
+      "y": 580,
+      "label": "findOne + so bcrypt"
+    },
+    {
+      "id": "m5",
+      "from": "browser",
+      "to": "backend",
+      "y": 608,
+      "label": "GET /user/getuser",
+      "note": "requireAuth: chữ ký JWT + tokenVersion đọc từ DB"
+    },
+    {
+      "id": "m6",
+      "from": "backend",
+      "to": "mongo",
+      "y": 668,
+      "label": "findById"
+    },
+    {
+      "id": "m7",
+      "from": "browser",
+      "to": "backend",
+      "y": 700,
+      "label": "GET /task/getTask",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m8",
+      "from": "backend",
+      "to": "mongo",
+      "y": 728,
+      "label": "find({userId})"
+    },
+    {
+      "id": "m9",
+      "from": "backend",
+      "to": "browser",
+      "y": 756,
+      "label": "200 {tasks}",
+      "variant": "return"
+    },
+    {
+      "id": "m10",
+      "from": "browser",
+      "to": "backend",
+      "y": 784,
+      "label": "POST /task/addTask",
+      "variant": "emphasis"
+    },
+    {
+      "id": "m11",
+      "from": "backend",
+      "to": "mongo",
+      "y": 812,
+      "label": "create task"
+    },
+    {
+      "id": "m12",
+      "from": "backend",
+      "to": "mailpit",
+      "y": 840,
+      "label": "mail \"task added\"",
+      "variant": "dashed",
+      "note": "fire-and-forget: gửi lỗi cũng không lộ ra response"
+    },
+    {
+      "id": "m13",
+      "from": "backend",
+      "to": "browser",
+      "y": 900,
+      "label": "201 {message, task}",
+      "variant": "return"
+    },
+    {
+      "id": "m14",
+      "from": "browser",
+      "to": "backend",
+      "y": 928,
+      "label": "PATCH /task/updateTask/:id"
+    },
+    {
+      "id": "m15",
+      "from": "backend",
+      "to": "mongo",
+      "y": 956,
+      "label": "findOneAndUpdate"
+    },
+    {
+      "id": "m16",
+      "from": "backend",
+      "to": "browser",
+      "y": 984,
+      "label": "200 {message, task}",
+      "variant": "return"
+    },
+    {
+      "id": "m17",
+      "from": "browser",
+      "to": "backend",
+      "y": 1012,
+      "label": "DELETE /task/removeTask/:id"
+    },
+    {
+      "id": "m18",
+      "from": "backend",
+      "to": "mongo",
+      "y": 1040,
+      "label": "findOneAndDelete"
+    },
+    {
+      "id": "m19",
+      "from": "backend",
+      "to": "browser",
+      "y": 1068,
+      "label": "200 {message}",
+      "variant": "return"
+    },
+    {
+      "id": "m20",
+      "from": "browser",
+      "to": "backend",
+      "y": 1100,
+      "label": "POST /forgotPassword/forgotPassword",
+      "note": "luôn trả cùng một thông báo dù email có trong DB hay không (chống dò tài khoản)"
+    },
+    {
+      "id": "m21",
+      "from": "backend",
+      "to": "mongo",
+      "y": 1175,
+      "label": "lưu hash token + hạn 15 phút"
+    },
+    {
+      "id": "m22",
+      "from": "backend",
+      "to": "mailpit",
+      "y": 1203,
+      "label": "mail link reset (token THÔ)",
+      "variant": "dashed",
+      "note": "không await (fire-and-forget); DB chỉ giữ SHA-256 của token, mail chứa token thô dùng một lần"
+    },
+    {
+      "id": "m23",
+      "from": "backend",
+      "to": "browser",
+      "y": 1283,
+      "label": "200 (đã gửi link)",
+      "variant": "return"
+    },
+    {
+      "id": "m24",
+      "from": "browser",
+      "to": "backend",
+      "y": 1323,
+      "label": "POST /forgotPassword/resetPassword",
+      "variant": "security"
+    },
+    {
+      "id": "m25",
+      "from": "backend",
+      "to": "mongo",
+      "y": 1363,
+      "label": "tokenVersion++ (huỷ mọi JWT cũ)"
+    },
+    {
+      "id": "m26",
+      "from": "probe",
+      "to": "backend",
+      "y": 1403,
+      "label": "GET /api/health",
+      "note": "HEALTHCHECK image/swarm, blackbox, deploy.sh qua nginx, start.ps1"
+    },
+    {
+      "id": "m27",
+      "from": "backend",
+      "to": "probe",
+      "y": 1502,
+      "label": "200 {status:ok}",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Hợp đồng phản hồi",
+      "items": [
+        "Mọi response là JSON: {user, token} khi đăng ký/đăng nhập, {tasks} khi lấy danh sách, {message, task} khi thêm/sửa",
+        "Vượt rate limit trả 429 {message}; đường dẫn lạ trả 404 {message} — không bao giờ là trang HTML kèm stack trace",
+        "Gặp 401 ở bất kỳ lời gọi nào: client xoá token, đồng bộ state React và chuyển về /login (trừ 4 trang công khai)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Cổng chặn theo từng nhóm",
+      "items": [
+        "login 10/15 phút · register 20/giờ · 3 route ghi task 100/15 phút · forgot 5/giờ · reset 10/15 phút",
+        "requireAuth áp cho toàn bộ /api/task và /user/getuser; /api/health và luồng quên mật khẩu không cần token",
+        "Bộ đếm là Map trong bộ nhớ từng tiến trình; backend chạy 2 replica nên trần thực tế theo IP có thể tới gấp đôi"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Bảo mật trên đường đi",
+      "items": [
+        "TLS kết thúc ở Cloudflare; đường capstone đi qua nginx, nơi ghi X-Forwarded-For bằng IP thật (đã đo: trước khi sửa backend thấy IP container cloudflared); đường capstone-api vào thẳng backend, bỏ qua nginx",
+        "Mật khẩu hash bcrypt; token reset chỉ nằm dạng hash trong DB; mail reset gửi kiểu fire-and-forget",
+        "Trình duyệt gọi API cùng origin qua đường dẫn tương đối /api; nginx gắn CSP chặt (connect-src 'self'), HSTS, nosniff, X-Frame-Options DENY — backend thêm helmet"
+      ]
+    }
+  ]
+}

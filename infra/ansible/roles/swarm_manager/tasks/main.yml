@@ -1,0 +1,39 @@
+---
+# Dùng `docker node ls` để biết swarm đã init chưa, thay vì đọc chuỗi
+# {{.Swarm.LocalNodeState}} — cách đó tránh xung đột cú pháp giữa template của
+# Jinja và của Go.
+- name: Swarm đã init chưa
+  shell: docker node ls >/dev/null 2>&1 && echo yes || echo no
+  register: swarm_ready
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Khởi tạo swarm
+  command: docker swarm init --advertise-addr {{ lab_manager_ip }}
+  register: swarm_init
+  when: swarm_ready.stdout == "no"
+  become: true
+
+- name: Lấy token worker (worker cần ở play sau)
+  command: docker swarm join-token -q worker
+  register: swarm_worker_token
+  changed_when: false
+  become: true
+
+- name: Tạo overlay network
+  shell: docker network create --driver overlay --attachable {{ stack_name }}
+  register: net_create
+  changed_when: net_create.rc == 0
+  # Chạy lại lần hai thì Docker báo "already exists" — đó không phải lỗi.
+  failed_when: net_create.rc != 0 and 'already exists' not in net_create.stderr
+  become: true
+
+- name: Chờ manager sẵn sàng (Leader)
+  shell: docker node ls --format "{% raw %}{{.Hostname}} {{.ManagerStatus}}{% endraw %}"
+  register: nodes
+  changed_when: false
+  until: "'Leader' in nodes.stdout"
+  retries: 10
+  delay: 3
+  become: true

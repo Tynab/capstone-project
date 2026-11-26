@@ -1,0 +1,191 @@
+---
+- name: Đặt hostname đúng cho node
+  hostname:
+    name: "{{ lab_hostnames[inventory_hostname] }}"
+
+- name: Cài gói nền
+  apt:
+    name: [ca-certificates, curl, gnupg, python3-pip, ufw, acl]
+    state: present
+    update_cache: true
+
+# VM không có Guest Additions thì đồng hồ trôi (đã gặp thật: worker lệch host 19
+# phút sau một lần reset). Swarm TỪ CHỐI node join nếu giờ lệch, vì CA certificate
+# của cụm được ký theo giờ manager — "certificate is not yet valid". Bật NTP và
+# CHỜ đồng bộ xong trước khi làm bất cứ việc gì với swarm.
+- name: Bật đồng bộ thời gian qua NTP
+  command: timedatectl set-ntp true
+  changed_when: false
+
+- name: Chờ đồng hồ đồng bộ (bắt buộc trước khi join swarm)
+  command: timedatectl show -p NTPSynchronized --value
+  register: ntp_state
+  until: ntp_state.stdout == "yes"
+  retries: 24
+  delay: 5
+  changed_when: false
+
+# cloudflared nói chuyện với Cloudflare bằng QUIC (quic-go) và xin bộ đệm UDP 7 MiB; mặc định
+# của kernel là 208 KiB nên nó log "failed to sufficiently increase receive buffer size" mỗi
+# lần khởi động và chạy với bộ đệm nhỏ. Không chỉnh được từ trong container: trên kernel 5.15
+# net.core.rmem_max/wmem_max KHÔNG thuộc network namespace (container không có file
+# /proc/sys/net/core/rmem_max — đã kiểm), nên phải đặt ở host. 7500000 là con số quic-go khuyến
+# nghị (wiki UDP-Buffer-Sizes). Đặt trên cả hai node vì cloudflared có thể dời node.
+- name: Nâng giới hạn bộ đệm UDP cho QUIC của cloudflared
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "7500000"
+    sysctl_file: /etc/sysctl.d/90-capstone-quic.conf
+    reload: true
+  loop: [net.core.rmem_max, net.core.wmem_max]
+
+# VM treo 3–40 phút ở "Begin: Loading essential drivers ..." khi khởi động (đo thật 2026-11-25:
+# 4/7 lần boot manager). Kernel log của MỌI lần treo dừng ở cùng một chỗ: module raid6_pq chạy
+# benchmark chọn thuật toán (raid6_choose_gen — tắt preempt, quay vòng AVX2 chờ jiffies nhảy) và
+# kẹt tới khi VirtualBox bỏ đuổi đồng hồ: "rcu_sched self-detected stall ... RIP:
+# raid6_avx24_gen_syndrome", "Long readout interval: cs_nsec 151177321354" và dòng vô lý
+# "raid6: avx2x4 gen() 45424276 MB/s" (lần bình thường ~18000 MB/s ở giây 13). Máy này chạy
+# VirtualBox qua Hyper-V (NEM): vCPU quay vòng không VM-exit thì không nhận được ngắt timer, nên
+# vòng chờ jiffies không bao giờ thoát. raid6_pq bị kéo vào initramfs bởi mdadm (conf/modules
+# nạp raid456) và btrfs-progs (local-premount/btrfs nạp btrfs) — lab không dùng cả hai: root là
+# ext4 trên LVM, /proc/mdstat trống. Gỡ hai gói = benchmark không bao giờ chạy lúc boot.
+- name: Gỡ mdadm và btrfs-progs (kéo raid6_pq vào initramfs — benchmark của nó làm VM treo khi boot)
+  apt:
+    name: [mdadm, btrfs-progs]
+    state: absent
+    purge: true
+  notify: cập nhật initramfs
+
+- name: Tạo /etc/apt/keyrings
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Tải GPG key của Docker
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Thêm repo Docker
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable"
+    filename: docker
+    state: present
+
+- name: Cài Docker Engine + compose plugin
+  apt:
+    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    state: present
+    update_cache: true
+
+- name: Bật docker
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+# Ansible đang chạy bằng user vagrant; thêm group docker chỉ có tác dụng cho
+# phiên đăng nhập MỚI, nên mọi lệnh docker về sau trong playbook đều dùng become.
+- name: Thêm vagrant vào group docker
+  user:
+    name: vagrant
+    groups: docker
+    append: true
+
+- name: UFW — cho phép các cổng của lab
+  ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  loop:
+    - { port: "22",   proto: tcp }   # SSH giữa hai VM (Ansible dùng đường này)
+    - { port: "2377", proto: tcp }   # quản lý swarm
+    - { port: "7946", proto: tcp }   # gossip giữa các node
+    - { port: "7946", proto: udp }
+    - { port: "4789", proto: udp }   # overlay network (VXLAN)
+    - { port: "80",   proto: tcp }   # app
+    - { port: "9090", proto: tcp }   # prometheus
+    - { port: "3001", proto: tcp }   # grafana
+    - { port: "8025", proto: tcp }   # mailpit
+    # node-exporter và cAdvisor publish cổng kiểu host trên TỪNG node, nên phải mở
+    # ở đây; thiếu hai cổng này thì Prometheus mất 4/7 target khi bật UFW.
+    - { port: "9100", proto: tcp }
+    - { port: "8080", proto: tcp }
+    # Portainer KHÔNG nằm trong danh sách này: cổng 9000 cần giới hạn nguồn nên có
+    # hai task riêng ngay bên dưới. Agent của Portainer không cần cổng host nào —
+    # nó nói chuyện với Portainer qua overlay network.
+
+# Portainer là UI quản trị chạy HTTP thường, nên giới hạn hẳn nguồn về mạng host-only.
+# Phải XOÁ rule cũ (bản trước tạo với mọi nguồn) trước khi thêm rule có nguồn — UFW
+# không tự thay thế. Hai task này vẫn idempotent: module ufw tính `changed` bằng cách
+# so sánh danh sách rule trước/sau (đã đọc mã modules/ufw.py dòng 605), nên lần chạy
+# thứ hai không báo changed.
+- name: UFW — bỏ rule Portainer mở cho mọi nguồn (nếu còn)
+  ufw:
+    rule: allow
+    port: "9000"
+    proto: tcp
+    delete: yes
+
+- name: UFW — cho phép Portainer từ mạng host-only
+  ufw:
+    rule: allow
+    port: "9000"
+    proto: tcp
+    from: "192.168.56.0/24"
+
+- name: UFW — bật tường lửa
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+
+# ------------------- Chặn theo nguồn cho các cổng ĐÃ PUBLISH -------------------
+# Đọc kỹ trước khi sửa: các luật UFW ở trên KHÔNG chặn được cổng publish. Docker DNAT
+# gói tin ở bảng nat rồi đẩy qua chuỗi FORWARD, nơi nó chèn jump tới DOCKER-USER trước
+# chuỗi ufw-* — gói tin không đi qua INPUT nên UFW không thấy. Đo thật trên máy:
+#   iptables -S FORWARD       -> "-A FORWARD -j DOCKER-USER" đứng trước "-j ufw-before-forward"
+#   iptables -t nat -S DOCKER -> DNAT tới container không kèm điều kiện nguồn
+# Vì vậy giới hạn nguồn nằm ở chuỗi DOCKER-USER — chuỗi Docker dành riêng cho người
+# quản trị và được xét TRƯỚC các luật ACCEPT của Docker.
+# (Cách khác đã thử không được: khai `host_ip` trong long syntax của ports để bind
+# thẳng vào IP host-only — `docker stack deploy` từ chối, xem ghi chú ở docker-stack.)
+- name: Script nạp luật DOCKER-USER (chặn theo nguồn cho cổng publish)
+  template:
+    src: docker-user-rules.sh.j2
+    dest: /usr/local/sbin/capstone-docker-user-rules.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: nạp lại luật docker-user
+
+# systemd chứ không dùng iptables-persistent: file rules.v4 được nạp TRƯỚC khi Docker
+# tạo chuỗi DOCKER-USER, nên luật trỏ vào chuỗi đó sẽ lỗi lúc boot. Unit này chạy sau
+# docker.service nên chuỗi đã tồn tại.
+- name: Unit systemd nạp luật DOCKER-USER sau khi Docker khởi động
+  copy:
+    dest: /etc/systemd/system/capstone-docker-user-rules.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Capstone: chan theo nguon cho cac cong publish (DOCKER-USER)
+      After=docker.service
+      Wants=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/capstone-docker-user-rules.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: nạp lại luật docker-user
+
+- name: Bật unit nạp luật DOCKER-USER
+  systemd:
+    name: capstone-docker-user-rules.service
+    enabled: yes
+    state: started
+    daemon_reload: yes

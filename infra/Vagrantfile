@@ -1,0 +1,127 @@
+# -*- mode: ruby -*-
+# 2 VM cho lab: manager (control node Ansible + runner GitHub) và worker.
+# Vòng đời: infra\setup.cmd -> vagrant up -> vagrant provision --provision-with ansible.
+#
+# Ansible chạy TỪ TRONG manager nên phải chờ cả hai VM lên mới chạy được; vì vậy
+# provisioner mang tên "ansible" được đặt run: "never" và gọi riêng ở bước sau.
+VAGRANTFILE_API_VERSION = "2"
+
+REPO_ROOT = File.expand_path("..", __dir__)
+LAB_KEY   = File.join(__dir__, ".ssh", "lab_key.pub")
+LAB_KEY_PRIV = File.join(__dir__, ".ssh", "lab_key")
+# RUNNER_TOKEN do infra/setup.ps1 đặt; rỗng thì role runner tự bỏ qua và báo cách chạy lại.
+RUNNER_TOKEN = ENV.fetch("RUNNER_TOKEN", "")
+
+# Token Cloudflare đọc từ infra/.env (đã gitignore) chứ KHÔNG lấy từ biến môi trường:
+# `vagrant provision` còn chạy tay nhiều lần sau này, biến môi trường sẽ mất và tunnel
+# lặng lẽ biến mất khỏi stack. File thiếu = token rỗng = không dựng cloudflared.
+INFRA_ENV_PATH = File.join(__dir__, ".env")
+INFRA_ENV = if File.exist?(INFRA_ENV_PATH)
+  # Phải chịu được file do người dùng tự sửa trên Windows: PowerShell 5.1 ghi kèm BOM
+  # (Out-File -Encoding utf8 / Set-Content -Encoding UTF8), và có thể lọt dòng không có
+  # dấu "=" (dán cả lệnh thay vì chỉ token, hoặc gõ sót). Không lọc hai thứ đó thì
+  # `.to_h` ném ArgumentError ngay lúc Vagrant đọc Vagrantfile -> MỌI lệnh vagrant chết
+  # với backtrace không nhắc gì tới infra/.env (đã tái hiện thật khi thêm dòng lạ).
+  File.readlines(INFRA_ENV_PATH, chomp: true)
+      .map { |line| line.strip.gsub(/\A\uFEFF/, "") }
+      .reject { |line| line.empty? || line.start_with?("#") || !line.include?("=") }
+      .map { |line| line.split("=", 2) }
+      .to_h
+      .transform_values { |value| value.to_s.gsub(/\A"|"\z/, "") }
+else
+  {}
+end
+CLOUDFLARE_TUNNEL_TOKEN = INFRA_ENV.fetch("CLOUDFLARE_TUNNEL_TOKEN", "")
+
+# Windows đang bật hypervisor (Hyper-V, WSL2, VBS...) thì VirtualBox không có VT-x và phải chạy qua
+# Hyper-V (VBox.log: "Attempting fall back to NEM"). Ở chế độ đó VM 2 vCPU có lỗi timer: một vCPU
+# đang nghỉ (hlt) còn vCPU kia quay vòng thì ngắt timer không tới, guest đứng hàng phút — đo thật
+# 2026-11-25 bằng presentation/_tools/thu-loi-timer-nem.mjs (nạp raid6_pq, benchmark quay chờ jiffies):
+# 2 vCPU treo 2/5 lần, mỗi lần 15–20 phút; 1 vCPU 0/20 lần, VBox.log không còn "Giving up catch-up".
+# Đổi halt method của VirtualBox chỉ làm nhẹ đi (old: còn 2/13 lần khựng 27–40s; method1: tệ hơn).
+# Vì vậy: có hypervisor -> 1 vCPU (stack 13 service vẫn chạy: /api/health ~5ms, deploy.sh 39s);
+# không có -> 2 vCPU như cũ. Ép số khác bằng VM_CPUS=<n> trong infra/.env (áp ở lần vagrant up sau).
+# Đọc WMI qua win32ole (~90ms) thay vì gọi powershell vì Vagrantfile được nạp ở MỌI lệnh vagrant.
+def windows_hypervisor_present?
+  return false unless Vagrant::Util::Platform.windows?
+  require "win32ole"
+  present = false
+  WIN32OLE.connect("winmgmts:\\\\.\\root\\cimv2")
+          .ExecQuery("SELECT HypervisorPresent FROM Win32_ComputerSystem")
+          .each { |cs| present = cs.HypervisorPresent }
+  present == true
+rescue LoadError, StandardError
+  false
+end
+VM_CPUS = Integer(INFRA_ENV.fetch("VM_CPUS", windows_hypervisor_present? ? 1 : 2))
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = "bento/ubuntu-22.04"
+  # Máy bật Hyper-V thì VirtualBox chạy qua WHPX, boot chậm hơn hẳn: mặc định
+  # 300s không đủ khi hai VM khởi động cùng lúc (đã gặp thật: worker bị
+  # "Timed out while waiting for the machine to boot").
+  config.vm.boot_timeout = 900
+  # Mặc định Vagrant chờ guest tắt sạch 60s rồi RÚT ĐIỆN. Đo thật 2026-11-25: `vagrant halt` tắt
+  # manager trước, worker còn lại một mình (không còn gói mạng nào đánh thức nó) và khựng lâu hơn
+  # 60s lúc tắt — lỗi đồng hồ ảo của VirtualBox chạy qua Hyper-V — nên bị rút điện; MongoDB nằm
+  # trên worker báo "Detected unclean shutdown" ở lần bật sau (WiredTiger phục hồi từ journal, nhưng
+  # đó là may chứ không phải thiết kế). Chờ 10 phút: guest luôn tự tỉnh, tắt chậm còn hơn mất dữ liệu.
+  config.vm.graceful_halt_timeout = 600
+  # Repo được mount vào /vagrant trong cả 2 VM: dùng để build image ngay trong VM
+  # và để Ansible đọc playbook mà không cần copy.
+  config.vm.synced_folder REPO_ROOT, "/vagrant"
+  # Vagrant 2.3+ mặc định ghi /vagrant vào /etc/fstab của guest (khối #VAGRANT-BEGIN) để mount
+  # lại sau reboot. Nhưng mỗi lần `vagrant up` nó vẫn mount thêm một lần -> /vagrant bị mount
+  # CHỒNG hai lớp (findmnt: vboxsf 591 nằm trên vboxsf 459) và node-exporter báo lỗi ở MỌI lần
+  # scrape: "collected metric node_filesystem_* ... mountpoint=/vagrant ... was collected before
+  # with the same name and label values" (đo thật 2026-11-25: 80 lỗi/20 phút mỗi node). Tắt ghi
+  # fstab -> chỉ Vagrant mount, đúng một lần; lần `vagrant up` kế tiếp Vagrant tự gỡ khối cũ.
+  config.vm.allow_fstab_modification = false
+
+  NODES = {
+    "manager" => { ip: "192.168.56.10", name: "swarm-manager" },
+    "worker"  => { ip: "192.168.56.11", name: "swarm-worker" },
+  }
+
+  NODES.each do |key, node|
+    config.vm.define key do |vm|
+      vm.vm.hostname = node[:name]
+
+      # Mạng riêng host-only: máy Windows truy cập 192.168.56.x, và hai VM nói
+      # chuyện với nhau qua đây (swarm + Ansible đều đi trên mạng này).
+      vm.vm.network "private_network", ip: node[:ip]
+
+      vm.vm.provider "virtualbox" do |vb|
+        vb.memory = 4096
+        vb.cpus = VM_CPUS
+        vb.name = "capstone-#{key}"
+      end
+
+      # Khoá lab được tiêm vào cả 2 VM: manager dùng nó để SSH sang worker khi
+      # chạy playbook. Không dùng khoá mặc định của Vagrant vì Vagrant không đặt
+      # khoá riêng vào trong guest.
+      vm.vm.provision "file", source: LAB_KEY, destination: "/home/vagrant/lab_key.pub"
+      vm.vm.provision "shell",
+        privileged: false,
+        inline: "cat ~/lab_key.pub >> ~/.ssh/authorized_keys && rm -f ~/lab_key.pub"
+    end
+  end
+
+  config.vm.define "manager" do |vm|
+    # Manager là control node của Ansible nên cần khoá RIÊNG để SSH sang worker.
+    # Chỉ manager có khoá riêng; worker chỉ nhận khoá công khai ở vòng lặp trên.
+    vm.vm.provision "file", source: LAB_KEY_PRIV, destination: "/home/vagrant/.ssh/lab_key"
+    vm.vm.provision "shell",
+      privileged: false,
+      inline: "chmod 600 ~/.ssh/lab_key && echo 'lab key san sang cho Ansible'"
+
+    vm.vm.provision "ansible", type: "ansible_local", run: "never" do |a|
+      a.playbook = "/vagrant/infra/ansible/site.yml"
+      a.inventory_path = "/vagrant/infra/ansible/inventory.ini"
+      # Mặc định ansible_local giới hạn vào chính máy đang provision -> phải mở
+      # rộng, nếu không playbook chỉ chạy trên manager và worker bị bỏ quên.
+      a.limit = "all"
+      a.extra_vars = { runner_token: RUNNER_TOKEN, cloudflare_tunnel_token: CLOUDFLARE_TUNNEL_TOKEN }
+    end
+  end
+end

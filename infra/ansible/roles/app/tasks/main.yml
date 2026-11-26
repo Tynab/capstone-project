@@ -1,0 +1,86 @@
+---
+- name: Tạo thư mục /opt/capstone
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: vagrant
+    group: vagrant
+    # 0755 chứ không 0750: GitHub runner chạy bằng user ghrunner và phải đi qua
+    # thư mục này để gọi deploy.sh (đã gặp thật: lỗi 126 Permission denied).
+    mode: "0755"
+
+# Secret nằm ngoài repo và ngoài GitHub: sinh tại chỗ.
+# 0750 + group docker (không phải 0700): user ghrunner của job deploy CI phải ĐI QUA
+# được thư mục này để `docker stack deploy` đọc file secret tạo secret trong swarm.
+- name: Tạo thư mục secrets
+  file:
+    path: "{{ app_dir }}/secrets"
+    state: directory
+    owner: vagrant
+    group: docker
+    mode: "0750"
+
+# lookup('password') GHI file ở lần chạy đầu và ĐỌC LẠI ở các lần sau, nên
+# provision lại không đổi mật khẩu (đổi mật khẩu Mongo sẽ làm app mất kết nối DB).
+# Chỉ dùng chữ + số vì các giá trị này được ghi vào .env, shell `source` nó rồi
+# nội suy vào compose: ký tự đặc biệt sẽ phá cả ba bước.
+- name: Sinh secret (giữ nguyên nếu đã có)
+  set_fact:
+    jwt_secret: "{{ lookup('password', app_dir + '/secrets/jwt_secret chars=ascii_letters,digits length=48') }}"
+    mongo_root_password: "{{ lookup('password', app_dir + '/secrets/mongo_root chars=ascii_letters,digits length=32') }}"
+    grafana_admin_password: "{{ lookup('password', app_dir + '/secrets/grafana_admin chars=ascii_letters,digits length=24') }}"
+    # Portainer từ chối mật khẩu < 12 ký tự; --admin-password-file đọc bản PLAINTEXT này.
+    portainer_admin_password: "{{ lookup('password', app_dir + '/secrets/portainer_admin chars=ascii_letters,digits length=24') }}"
+
+# Đặt SAU task sinh secret (lúc đó file mới tồn tại): lookup('password') tạo file 0600
+# của user vagrant, đổi sang 0640 group docker để `docker stack deploy` (chạy bằng vagrant
+# hoặc ghrunner) đọc được khi tạo secret trong swarm. Nội dung file không đổi qua các lần
+# provision nên task này chỉ áp quyền — trừ lần đầu, khi nó tạo ra secret của swarm.
+- name: Đặt quyền cho file secret Portainer
+  file:
+    path: "{{ app_dir }}/secrets/portainer_admin"
+    owner: vagrant
+    group: docker
+    mode: "0640"
+  notify: deploy stack
+
+# Token tunnel đến từ ngoài (infra/.env -> Vagrantfile -> extra_vars), không sinh tự động.
+# Rỗng nghĩa là "không có tunnel": role vẫn chạy bình thường, chỉ bỏ service cloudflared.
+- name: Chuẩn hoá token tunnel thành cờ bật/tắt
+  set_fact:
+    cloudflare_tunnel_token: "{{ cloudflare_tunnel_token | default('', true) }}"
+    cloudflare_tunnel_enabled: "{{ (cloudflare_tunnel_token | default('', true) | length) > 0 }}"
+
+- name: Ghi /opt/capstone/.env
+  template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: vagrant
+    # group docker + 0640: cả vagrant (chạy tay) và ghrunner (job deploy của CI)
+    # đều nằm trong group docker và cần đọc file này để deploy.
+    group: docker
+    mode: "0640"
+  # Mọi thứ trong .env đều được nội suy vào file stack (token tunnel, URL, image...),
+  # nên .env đổi là phải deploy lại. Thiếu notify ở đây thì riêng việc dán token vào
+  # infra/.env sẽ KHÔNG làm service cloudflared xuất hiện (đã gặp thật).
+  notify: deploy stack
+
+- name: Ghi deploy.sh
+  template:
+    src: deploy.sh.j2
+    dest: "{{ app_dir }}/deploy.sh"
+    owner: vagrant
+    mode: "0755"
+
+- name: Đặt file stack và cấu hình giám sát
+  include_tasks: stack.yml
+
+# Không có token thì stack vẫn đủ phần còn lại; in cách bật để không ai phải đi tìm.
+- name: Nhắc cách bật Cloudflare Tunnel
+  debug:
+    msg: >-
+      Chưa có CLOUDFLARE_TUNNEL_TOKEN (infra/.env) -> KHÔNG dựng service cloudflared.
+      Muốn bật: tạo tunnel trên Cloudflare dashboard (Networking > Tunnels > Create Tunnel),
+      thêm 2 route Published application trỏ về http://frontend:80 và http://backend:8000,
+      dán token "eyJ..." vào infra/.env rồi chạy lại provision.
+  when: not cloudflare_tunnel_enabled

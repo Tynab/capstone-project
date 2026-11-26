@@ -1,0 +1,28 @@
+---
+# Kiểm trạng thái thành viên bằng `docker info`, KHÔNG dùng `docker node ls`:
+# node worker không xem được trạng thái cụm ("This node is not a swarm manager"),
+# nên cách đó luôn trả về "chưa join" và task join chạy lại mỗi lần provision.
+# Node đã join thì `docker info` có dòng "Swarm: active".
+- name: Node đã join swarm chưa
+  # Phải quote cả chuỗi: giá trị chứa ": " nên YAML không đọc được nếu để trần.
+  shell: 'docker info 2>/dev/null | grep -q "Swarm: active" && echo joined || echo not-joined'
+  register: join_state
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Lấy token worker từ manager
+  command: docker swarm join-token -q worker
+  delegate_to: swarm_manager
+  register: swarm_worker_token
+  changed_when: false
+  become: true
+  when: join_state.stdout != "joined"
+
+- name: Join swarm
+  command: docker swarm join --token {{ swarm_worker_token.stdout }} {{ lab_manager_ip }}:2377
+  register: join_result
+  # Lần chạy lại sau khi đã join thì swarm báo lỗi này — không phải lỗi thật.
+  failed_when: join_result.rc != 0 and 'already part of a swarm' not in join_result.stderr
+  when: join_state.stdout != "joined"
+  become: true

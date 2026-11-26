@@ -1,0 +1,16 @@
+{
+  "name": "todo-app-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test end-to-end cho todo-app: dựng mongod thật, chạy backend (và tuỳ chọn frontend), rồi gọi HTTP / điều khiển trình duyệt thật",
+  "scripts": {
+    "test": "npm run test:api",
+    "test:api": "node api.e2e.mjs",
+    "test:browser": "node browser.e2e.mjs"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.3.0",
+    "puppeteer-core": "^25.14.0"
+  }
+}

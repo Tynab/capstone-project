@@ -1,0 +1,24 @@
+# Những gì KHÔNG đưa vào build context của image frontend.
+# node_modules bị loại vì giai đoạn build cài lại bằng `npm ci`.
+node_modules
+npm-debug.log*
+yarn-error.log*
+
+# dist/ là sản phẩm của lần build trước — để Vite build lại từ source trong image.
+# (Đổi từ build/ khi bỏ CRA; giữ cả hai để không vô tình đóng gói nhầm.)
+build
+dist
+
+# Secret và file cấu hình riêng của máy, trừ file mẫu.
+.env
+.env.*
+!.env.example
+
+# Không cần cho lúc build/chạy.
+coverage
+.DS_Store
+README.md
+.prettierrc
+Dockerfile
+.dockerignore
+.git

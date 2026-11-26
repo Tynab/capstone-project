@@ -1,0 +1,359 @@
+# Stack của bài cuối khóa. Các biến ${...} được nội suy từ /opt/capstone/.env
+# mà deploy.sh đã `source` trước khi gọi `docker stack deploy`.
+# ĐÂY LÀ TEMPLATE Jinja: Ansible render thành /opt/capstone/docker-stack.yml. Sửa file
+# này rồi provision, đừng sửa bản trong VM (lần provision sau ghi đè).
+# (Chú thích không được chứa cặp ngoặc nhọn — Jinja sẽ hiểu là biểu thức.)
+version: "3.8"
+
+networks:
+  capstone:
+    external: true
+
+volumes:
+  mongo_data:
+  prom_data:
+  grafana_data:
+  # Tên mới (trước là portainer_data): Portainer CHỈ tạo environment từ tham số -H ở lần
+  # khởi tạo ĐẦU TIÊN. Volume cũ được khởi tạo lúc -H còn trỏ sai tên agent nên không có
+  # environment nào và nó không thử lại — đổi tên volume để nó khởi tạo lại (admin tạo lại
+  # từ secret, mật khẩu không đổi). Volume cũ còn lại là rác, xoá được bằng
+  # `docker volume rm capstone_portainer_data` trên manager.
+  portainer_state:
+
+secrets:
+  portainer_admin:
+    # File do Ansible sinh và đặt quyền 0640 group docker (xem role app).
+    file: ./secrets/portainer_admin
+
+services:
+  mongo:
+    image: mongo:6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    # mongod cảnh báo "Soft rlimits for open file descriptors too low" (1024, khuyến nghị
+    # 64000) ở MỖI lần khởi động — mỗi collection/index/kết nối là một file descriptor.
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      # Ghim vào worker để dữ liệu nằm một chỗ cố định và manager nhẹ tải.
+      placement:
+        constraints: [node.role == worker]
+      # condition: any (mặc định của swarm), KHÔNG phải on-failure. on-failure chỉ thay task khi
+      # container thoát mã KHÁC 0 — mà mongod, nginx, mailpit đều thoát mã 0 khi nhận SIGTERM lúc
+      # node tắt sạch (vagrant halt / tắt Windows). Task đó thành "Complete" và swarm KHÔNG tạo task
+      # mới khi node lên lại: đo thật 2026-11-25 — sau vài lần halt/up manager, mailpit 0/1 và
+      # frontend 1/2 nằm im; tái hiện bằng docker kill --signal=TERM (ExitCode=0 → 0/1), và mongod
+      # cũng thoát 0 với SIGTERM (thử bằng container mongo:6 tạm) nên sau khi worker tắt sạch, mongo
+      # đứng 0/1 (dữ liệu trong volume còn nguyên, nhưng app không có DB) tới khi có người can thiệp.
+      # Không service nào ở đây là job chạy-một-lần nên "any" luôn đúng.
+      restart_policy:
+        condition: any
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: "8000"
+      FRONTEND_URL: ${FRONTEND_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TRUST_PROXY: ${TRUST_PROXY}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+    networks: [capstone]
+    deploy:
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.id
+      # start-first + rollback: cập nhật hỏng thì swarm tự quay về bản cũ.
+      # monitor phải LỚN HƠN start-period của healthcheck (20s) + interval (15s):
+      # mặc định của swarm là 5s, quá ngắn nên task mới bị coi là hỏng trước khi
+      # kịp healthy -> swarm rollback dù image hoàn toàn tốt (đã gặp thật).
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 10s
+        monitor: 45s
+      restart_policy:
+        condition: any
+
+  # Cổng 80 CỐ Ý để kiểu ingress (không ghim vào một IP host-only như các cổng quản
+  # trị): frontend chạy 2 replica trải trên cả 2 node, mà bind vào 192.168.56.10 thì
+  # task trên worker không bind được (node đó không có IP này) và sẽ chết. Bản thân app
+  # vốn CÔNG KHAI qua Cloudflare Tunnel, và tunnel/blackbox đi vào qua overlay
+  # (http://frontend:80) chứ không qua cổng publish này — cổng 80 ở đây chỉ để máy
+  # Windows mở http://192.168.56.10 cho tiện.
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    ports:
+      - target: 80
+        published: 80
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 2
+      placement:
+        preferences:
+          - spread: node.id
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 10s
+        monitor: 45s
+      restart_policy:
+        condition: any
+
+  # SMTP giả cho lab: nhận mọi mail để demo được luồng quên mật khẩu mà không
+  # cần credentials thật. Xem UI ở cổng 8025.
+  mailpit:
+    image: axllent/mailpit
+    # Hộp thư này chứa MỌI mail reset mật khẩu của app công khai, mà mạng host-only
+    # 192.168.56.0/24 dùng chung với project khác -> cổng 8025 nằm trong danh sách bị
+    # luật DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
+    ports:
+      - target: 8025
+        published: 8025
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+
+  # ------------------------------- giám sát -------------------------------
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - prom_data:/prometheus
+    # Cổng publish kiểu ingress KHÔNG giới hạn được theo nguồn: Docker DNAT gói tin ở
+    # chuỗi FORWARD trước khi UFW nhìn thấy (đã đo iptables thật trên máy), mà
+    # `docker stack deploy` cũng KHÔNG nhận `host_ip` trong long syntax (schema v3 trả
+    # "additional property host_ip is not allowed" — đã thử thật ngày 2026-10-17).
+    # Vì vậy việc chặn nằm ở luật DOCKER-USER do role common cài — xem
+    # infra/ansible/roles/common/templates/docker-user-rules.sh.j2.
+    ports:
+      - target: 9090
+        published: 9090
+        mode: ingress
+    networks: [capstone]
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    # Cổng 3001 nằm trong danh sách bị luật DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
+    ports:
+      - target: 3000
+        published: 3001
+        mode: ingress
+    networks: [capstone]
+    # Dashboard + datasource nạp từ file: mở Grafana là có sẵn, không bấm tay.
+    configs:
+      - source: grafana_datasource
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+        mode: 0444
+      - source: grafana_dashboards_provider
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+        mode: 0444
+      - source: grafana_dashboard_capstone
+        target: /var/lib/grafana/dashboards/capstone-overview.json
+        mode: 0444
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  # Trạng thái database: dùng chính tài khoản trong MONGO_URI.
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.53.0
+    # 0.5x đổi giao diện dòng lệnh: --collect-all/--discovering-mode KHÔNG còn (truyền
+    # vào là container chết vì unknown flag). --compatible-mode để vẫn xuất các tên
+    # metric cũ (mongodb_connections, mongodb_up) mà dashboard Capstone overview
+    # đang truy vấn; --collector.diagnosticdata bật nhóm số liệu như bản cũ.
+    command: ["--compatible-mode", "--collector.diagnosticdata"]
+    environment:
+      MONGODB_URI: ${MONGO_URI}
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.29.0
+    configs:
+      - source: blackbox_yml
+        target: /etc/blackbox_exporter/config.yml
+        mode: 0444
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
+  # global: mỗi node một container -> đo đúng phần cứng của từng máy.
+  # Cổng publish kiểu host để Prometheus scrape theo IP của từng node.
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      # Collector diskstats đọc thuộc tính thiết bị ở /run/udev/data; trong container không
+      # có đường đó nên node-exporter log ERROR "Failed to open directory, disabling udev
+      # device properties" mỗi lần khởi động. Thư mục thật của host đã có sẵn qua mount /
+      # ở /host/root (bind mount của Docker là đệ quy) — chỉ cần trỏ cờ vào đó.
+      - --path.udev.data=/host/root/run/udev/data
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - target: 9100
+        published: 9100
+        mode: host
+    networks: [capstone]
+    deploy:
+      mode: global
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - target: 8080
+        published: 8080
+        mode: host
+    networks: [capstone]
+    deploy:
+      mode: global
+
+  # ------------------------------- quản trị -------------------------------
+  # UI + API Portainer. CHỈ mở trên mạng host-only (http://192.168.56.10:9000),
+  # KHÔNG đưa ra Internet. Ghim manager.
+  portainer:
+    image: portainer/portainer-ce:2.45.2
+    # -H ...: dùng agent (mount docker.sock nằm ở agent) nên bản thân service này
+    # KHÔNG cần socket. --admin-password-file đọc bản plaintext, CHỈ có tác dụng ở
+    # lần tạo admin đầu tiên; các lần sau Portainer ghi log "instance already has an
+    # administrator user defined" rồi bỏ qua (đã đối chiếu mã nguồn 2.45.2).
+    # Tên DNS phải là tasks.<tên service trong CHÍNH file này>. Stack chính thức của
+    # Portainer đặt service tên `agent` nên ở đó là `tasks.agent`; service của mình tên
+    # `portainer-agent` — viết `tasks.agent` sẽ NXDOMAIN, Portainer vẫn chạy nhưng UI
+    # hiện "No items available" (đã gặp thật, sửa ở đây).
+    command:
+      - -H
+      - tcp://tasks.portainer-agent:9001
+      - --tlsskipverify
+      - --admin-password-file
+      - /run/secrets/portainer_admin
+    volumes:
+      - portainer_state:/data
+    secrets:
+      # target tường minh: mặc định swarm mount theo tên ĐÃ GHÉP STACK
+      # (capstone_portainer_admin) chứ không phải tên viết trong file này.
+      - source: portainer_admin
+        target: portainer_admin
+    # UI này điều khiển được cả cụm swarm nên cổng 9000 nằm trong danh sách bị luật
+    # DOCKER-USER chặn theo nguồn (xem ghi chú ở prometheus).
+    ports:
+      - target: 9000
+        published: 9000
+        mode: ingress
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+
+  # Một container mỗi node: đưa docker.sock + volume của node đó vào cụm Portainer.
+  # Không có agent thì UI chỉ thấy container/image/volume của node manager (mongo và
+  # replica backend/frontend nằm trên worker sẽ biến mất).
+  portainer-agent:
+    image: portainer/agent:2.45.2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks: [capstone]
+    deploy:
+      mode: global
+      restart_policy:
+        condition: any
+
+{% if cloudflare_tunnel_enabled %}
+  # Connector của Cloudflare Tunnel. CHỦ ĐỘNG kết nối ra ngoài (7844 TCP/UDP) nên
+  # không publish cổng nào và không cần mở thêm gì trên UFW. Nằm trong overlay
+  # capstone nên phân giải được tên service `frontend` / `backend` mà route trên
+  # dashboard trỏ tới. Token lấy từ .env (đổi token = sửa infra/.env + provision).
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.1
+    # Image đã có ENTRYPOINT ["cloudflared","--no-autoupdate"] -> không lặp lại cờ đó.
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks: [capstone]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: any
+{% endif %}
+
+# Config của swarm là BẤT BIẾN: `docker stack deploy` chỉ được đổi nhãn của config đã có, đổi
+# NỘI DUNG thì báo "failed to update config ...: only updates to Labels are allowed" và cả lần
+# deploy dừng (đã tái hiện thật bằng một stack thử). Tức là sửa prometheus.yml / blackbox.yml /
+# dashboard Grafana rồi provision là MỌI lần deploy sau đều hỏng — cả Ansible lẫn CI, vì hai
+# đường cùng gọi deploy.sh. Cách chuẩn: tên config mang hash nội dung (deploy.sh tính và export
+# CFG_*). Nội dung đổi -> tên mới -> swarm tạo config mới và cập nhật service dùng nó; nội dung
+# giữ nguyên -> cùng tên -> không đổi gì (provision lần hai vẫn changed=0). `:?` làm deploy
+# chạy tay thiếu biến thì báo lỗi ngay thay vì lặng lẽ tạo tên rỗng. Config cũ không còn ai
+# dùng được deploy.sh dọn sau khi deploy xanh.
+configs:
+  prometheus_yml:
+    name: {{ stack_name }}_prometheus_yml_${CFG_PROMETHEUS_YML:?chay qua deploy.sh}
+    file: ./prometheus.yml
+  blackbox_yml:
+    name: {{ stack_name }}_blackbox_yml_${CFG_BLACKBOX_YML:?chay qua deploy.sh}
+    file: ./blackbox.yml
+  grafana_datasource:
+    name: {{ stack_name }}_grafana_datasource_${CFG_GRAFANA_DATASOURCE:?chay qua deploy.sh}
+    file: ./grafana/provisioning/datasources/prometheus.yml
+  grafana_dashboards_provider:
+    name: {{ stack_name }}_grafana_dashboards_provider_${CFG_GRAFANA_DASHBOARDS_PROVIDER:?chay qua deploy.sh}
+    file: ./grafana/provisioning/dashboards/dashboards.yml
+  grafana_dashboard_capstone:
+    name: {{ stack_name }}_grafana_dashboard_capstone_${CFG_GRAFANA_DASHBOARD_CAPSTONE:?chay qua deploy.sh}
+    file: ./grafana/dashboards/capstone-overview.json

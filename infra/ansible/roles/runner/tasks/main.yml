@@ -1,0 +1,117 @@
+---
+# Runner chạy TRONG VM manager vì GitHub-hosted runner không nhìn thấy IP
+# host-only 192.168.56.x. Runner tự kéo job về nên không phải mở port nào.
+- name: Runner đã đăng ký chưa
+  stat:
+    path: "{{ runner_dir }}/.runner"
+  register: runner_registered
+  become: true
+
+- name: Tạo user riêng cho runner (trong group docker để gọi được docker)
+  user:
+    name: "{{ runner_user }}"
+    groups: docker
+    shell: /bin/bash
+    create_home: true
+  become: true
+
+- name: Lấy bản runner mới nhất (khi không ghim phiên bản)
+  uri:
+    url: https://api.github.com/repos/actions/runner/releases/latest
+    return_content: true
+  register: runner_release
+  become: false
+  when:
+    - not runner_registered.stat.exists
+    - runner_version | length == 0
+
+- name: Chốt phiên bản runner sẽ cài
+  set_fact:
+    # .get() chứ không phải .json: lần chạy thứ hai task lấy bản mới nhất bị SKIP
+    # (runner đã đăng ký), khi đó runner_release không có khoá 'json' và truy cập
+    # thẳng sẽ làm playbook đổ.
+    runner_effective_version: >-
+      {{ runner_version if runner_version | length > 0
+         else ((runner_release | default({})).get('json', {}).get('tag_name', '') | regex_replace('^v', '')) }}
+
+# Dọn bản runner của lần chạy dở dang trước (chưa đăng ký xong) — nếu không,
+# `creates: config.sh` sẽ bỏ qua bước tải và ta giữ lại đúng bản cũ đã hỏng.
+# Chỉ chạy khi CHƯA có .runner, nên không bao giờ xoá runner đang hoạt động.
+- name: Dọn bản runner dở dang
+  file:
+    path: "{{ runner_dir }}"
+    state: absent
+  become: true
+  when: not runner_registered.stat.exists
+
+- name: Tạo thư mục cài runner
+  file:
+    path: "{{ runner_dir }}"
+    state: directory
+    owner: "{{ runner_user }}"
+    group: "{{ runner_user }}"
+    mode: "0755"
+  become: true
+
+- name: Tải bộ cài runner
+  unarchive:
+    src: "https://github.com/actions/runner/releases/download/v{{ runner_effective_version }}/actions-runner-linux-x64-{{ runner_effective_version }}.tar.gz"
+    dest: "{{ runner_dir }}"
+    remote_src: true
+    owner: "{{ runner_user }}"
+    group: "{{ runner_user }}"
+    creates: "{{ runner_dir }}/config.sh"
+  become: true
+  when: not runner_registered.stat.exists
+
+- name: Cài dependency của runner
+  shell: "{{ runner_dir }}/bin/installdependencies.sh"
+  args:
+    chdir: "{{ runner_dir }}"
+  register: deps
+  changed_when: "'already installed' not in deps.stdout"
+  become: true
+  when: not runner_registered.stat.exists
+
+- name: Đăng ký runner với repo
+  command: >-
+    ./config.sh --url {{ repo_url }} --token {{ runner_token }}
+    --name {{ runner_name }} --labels {{ runner_labels }}
+    --unattended --replace
+  args:
+    chdir: "{{ runner_dir }}"
+  become: true
+  become_user: "{{ runner_user }}"
+  when:
+    - not runner_registered.stat.exists
+    - runner_token | length > 0
+
+- name: Nhắc cách chạy lại khi thiếu token
+  debug:
+    msg: >-
+      THIEU runner_token -> bo qua dang ky runner. Chay lai bang:
+      $env:RUNNER_TOKEN = (gh api -X POST repos/Tynab/capstone-project/actions/runners/registration-token --jq .token);
+      cd infra; vagrant provision --provision-with ansible
+  when:
+    - not runner_registered.stat.exists
+    - runner_token | length == 0
+
+# Tách cài đặt khỏi khởi động: `svc.sh install` đổ khi unit đã tồn tại (đã gặp
+# thật ở lần provision thứ hai), còn `svc.sh start` không idempotent. Dùng module
+# systemd để phần "đảm bảo đang chạy" an toàn khi chạy lại.
+- name: Cài runner thành systemd service
+  command: "{{ runner_dir }}/svc.sh install {{ runner_user }}"
+  args:
+    chdir: "{{ runner_dir }}"
+    creates: "/etc/systemd/system/actions.runner.Tynab-capstone-project.{{ runner_name }}.service"
+  become: true
+  when: runner_registered.stat.exists or runner_token | length > 0
+
+- name: Bật và chạy runner service
+  systemd:
+    name: "actions.runner.Tynab-capstone-project.{{ runner_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: runner_registered.stat.exists or runner_token | length > 0
